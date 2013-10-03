@@ -65,6 +65,8 @@ To run OSv
 
     ./scripts/run.py
 
+If running under QEMU (the default) you can terminate by hitting Ctrl+A X.
+
 External Networking
 ===================
 

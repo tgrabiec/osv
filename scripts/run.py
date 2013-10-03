@@ -66,6 +66,7 @@ def start_osv_qemu():
         args += ["-chardev", "stdio,mux=on,id=stdio"]
         args += ["-mon", "chardev=stdio,mode=readline,default"]
         args += ["-device", "isa-serial,chardev=stdio"]
+        args += ["-nographic"]
 
     try:
         # Save the current settings of the stty
