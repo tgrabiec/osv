@@ -9,6 +9,7 @@
 #include <osv/trace.hh>
 #include <sched.hh>
 #include <osv/wait_record.hh>
+#include <osv/lockdep.hh>
 
 namespace lockfree {
 
@@ -20,11 +21,13 @@ TRACEPOINT(trace_mutex_unlock, "%p", mutex *);
 TRACEPOINT(trace_mutex_send_lock, "%p, wr=%p", mutex *, wait_record *);
 TRACEPOINT(trace_mutex_receive_lock, "%p", mutex *);
 
+static lockdep::lock_tracker<mutex, &mutex::lockdep_hook> lockdep_tracker;
+
 void mutex::lock()
 {
     trace_mutex_lock(this);
-
     sched::thread *current = sched::thread::current();
+    lockdep_tracker.on_attempt(current, this);
 
     if (count.fetch_add(1, std::memory_order_acquire) == 0) {
         // Uncontended case (no other thread is holding the lock, and no
@@ -33,6 +36,7 @@ void mutex::lock()
         // just for implementing a recursive mutex.
         owner.store(current, std::memory_order_relaxed);
         depth = 1;
+        lockdep_tracker.on_acquire(current, this);
         return;
     }
 
@@ -77,6 +81,7 @@ void mutex::lock()
                     assert(other == &waiter);
                     owner.store(current, std::memory_order_relaxed);
                     depth = 1;
+                    lockdep_tracker.on_acquire(current, this);
                     return;
                 }
             }
@@ -89,6 +94,7 @@ void mutex::lock()
     trace_mutex_lock_wake(this);
     owner.store(current, std::memory_order_relaxed);
     depth = 1;
+    lockdep_tracker.on_acquire(current, this);
 }
 
 // send_lock() is used for implementing a "wait morphing" technique, where
@@ -142,20 +148,25 @@ void mutex::send_lock(wait_record *wr)
 // thread it wakes, we wouldn't need this function.
 void mutex::receive_lock()
 {
+    auto current = sched::thread::current();
     trace_mutex_receive_lock(this);
-    owner.store(sched::thread::current(), std::memory_order_relaxed);
+    lockdep_tracker.on_attempt(current, this);
+    owner.store(current, std::memory_order_relaxed);
     depth = 1;
+    lockdep_tracker.on_acquire(current, this);
 }
 
 bool mutex::try_lock()
 {
     sched::thread *current = sched::thread::current();
+    lockdep_tracker.on_attempt(current, this);
     int zero = 0;
     if (count.compare_exchange_strong(zero, 1, std::memory_order_acquire)) {
         // Uncontended case. We got the lock.
         owner.store(current, std::memory_order_relaxed);
         depth = 1;
         trace_mutex_try_lock(this, true);
+        lockdep_tracker.on_acquire(current, this);
         return true;
     }
 
@@ -176,6 +187,7 @@ bool mutex::try_lock()
         owner.store(current, std::memory_order_relaxed);
         depth = 1;
         trace_mutex_try_lock(this, true);
+        lockdep_tracker.on_acquire(current, this);
         return true;
     }
 
@@ -190,11 +202,14 @@ void mutex::unlock()
     // We assume unlock() is only ever called when this thread is holding
     // the lock. The following assertions don't seem to add any measurable
     // performance penalty, so we leave them in.
-    assert(owner.load(std::memory_order_relaxed) == sched::thread::current());
+    auto current = sched::thread::current();
+    assert(owner.load(std::memory_order_relaxed) == current);
     assert(depth!=0);
     if (--depth)
         return; // recursive mutex still locked.
 
+    lockdep_tracker.on_release(current, this);
+    
     // When we return from unlock(), we will no longer be holding the lock.
     // We can't leave owner==current, otherwise a later lock() in the same
     // thread will think it's a recursive lock, while actually another thread
@@ -216,7 +231,7 @@ void mutex::unlock()
     while(true) {
         wait_record *other = waitqueue.pop();
         if (other) {
-            assert(other->thread() != sched::thread::current()); // this thread isn't waiting, we know that :(
+            assert(other->thread() != current); // this thread isn't waiting, we know that :(
             other->wake();
             return;
         }
@@ -242,6 +257,11 @@ bool mutex::owned() const
     return owner.load(std::memory_order_relaxed) == sched::thread::current();
 }
 
+void mutex::on_destroy()
+{
+    lockdep_tracker.on_destroy(sched::thread::current(), this);
+}
+
 }
 
 // For use in C, which can't access namespaces or methods. Note that for
@@ -262,5 +282,11 @@ __attribute__ ((flatten)) bool lockfree_mutex_try_lock(void *m) {
 }
 __attribute__ ((flatten)) bool lockfree_mutex_owned(void *m) {
     return static_cast<lockfree::mutex *>(m)->owned();
+}
+__attribute__ ((flatten)) void lockfree_mutex_destroy(void *m) {
+    return static_cast<lockfree::mutex *>(m)->on_destroy();
+}
+__attribute__ ((flatten)) void lockfree_mutex_set_lockdep_class(void *m, lockdep_lock_class* lock_class) {
+    return lockfree::lockdep_tracker.set_class(static_cast<lockfree::mutex *>(m), lock_class);
 }
 }

@@ -42,6 +42,7 @@
 #include <bsd/porting/networking.hh>
 #include "dhcp.hh"
 #include <osv/version.h>
+#include <osv/lockdep.hh>
 
 using namespace osv;
 
@@ -271,6 +272,7 @@ void main_cont(int ac, char** av)
     sched::preempt_enable();
     console::console_init();
     enable_trace();
+    lockdep::init_lockdep();
     if (opt_log_backtrace) {
         // can only do this after smp_launch, otherwise the IDT is not initialized,
         // and backtrace_safe() fails as soon as we get an exception

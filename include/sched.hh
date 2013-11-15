@@ -18,6 +18,7 @@
 #include <osv/mutex.h>
 #include <atomic>
 #include "osv/lockless-queue.hh"
+#include "osv/lockdep.hh"
 #include <list>
 #include <memory>
 #include <vector>
@@ -210,6 +211,7 @@ public:
     static void yield();
     static void exit() __attribute__((__noreturn__));
     static thread* current() __attribute((no_instrument_function));
+    static thread* current_safe() __attribute((no_instrument_function));
     stack_info get_stack_info();
     cpu* tcpu() const __attribute__((no_instrument_function));
     void join();
@@ -280,6 +282,7 @@ private:
     friend void ::smp_launch();
     friend void init(std::function<void ()> cont);
 public:
+    lockdep::context* lockdep_context;
     thread* _joiner;
     bi::set_member_hook<> _runqueue_link;
     // see cpu class

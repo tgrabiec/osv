@@ -8,6 +8,8 @@ tests = [
     "/tests/tst-vfs.so",
     "/tests/tst-stat.so",
     "/tests/tst-libc-locking.so",
+    "/tests/tst-lfset.so",
+    "/tests/tst-lockdep.so",
 ]
 
 def run_test(name):

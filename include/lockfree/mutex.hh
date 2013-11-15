@@ -51,6 +51,7 @@
 
 #include <atomic>
 #include <lockfree/queue-mpsc.hh>
+#include <osv/lockdep.hh>
 
 // we don't want to include <sched.hh> because that includes a bunch of things
 // which eventually, recursively, use mutexes.
@@ -76,11 +77,13 @@ protected:
     std::atomic<unsigned int> handoff;
     unsigned int sequence;
 public:
+    lockdep::lock_hook lockdep_hook;
+    
     // Note: mutex's constructor just initializes the whole structure to
     // zero, and its destructor does nothing. This is useful to know when
     // allocating a mutex in C.
     constexpr mutex() : count(0), depth(0), owner(nullptr), waitqueue(), handoff(0), sequence(0) { }
-    ~mutex() { /*assert(count==0);*/ }
+    ~mutex() { /*assert(count==0);*/ on_destroy(); }
 
     void lock();
     bool try_lock();
@@ -93,6 +96,8 @@ public:
     // For wait morphing. Do not use unless you know what you are doing :-)
     void send_lock(wait_record *wr);
     void receive_lock();
+
+    void on_destroy();
 };
 
 }

@@ -18,6 +18,7 @@
 #include "smp.hh"
 #include "osv/trace.hh"
 #include <osv/percpu.hh>
+#include <osv/lockdep.hh>
 #include "prio.hh"
 #include "elf.hh"
 
@@ -39,7 +40,7 @@ TRACEPOINT(trace_timer_fired, "timer=%p", timer_base*);
 
 std::vector<cpu*> cpus __attribute__((init_priority(CPUS_INIT_PRIO)));
 
-thread __thread * s_current;
+thread __thread * s_current = nullptr;
 cpu __thread * current_cpu;
 
 unsigned __thread preempt_counter = 1;
@@ -456,6 +457,9 @@ thread::thread(std::function<void ()> func, attr attr, bool main)
         // set_cleanup() with whatever cleanup needs to be done.
         set_cleanup([=] { delete this; });
     }
+
+    lockdep_context = new lockdep::context();
+
     if (main) {
         _cpu = attr.pinned_cpu;
         _status.store(status::running);
@@ -464,6 +468,7 @@ thread::thread(std::function<void ()> func, attr attr, bool main)
         }
         remote_thread_local_var(current_cpu) = _cpu;
     }
+
 }
 
 thread::~thread()
@@ -477,6 +482,7 @@ thread::~thread()
     if (_attr.stack.deleter) {
         _attr.stack.deleter(_attr.stack);
     }
+    delete lockdep_context;
     free_tcb();
 }
 
@@ -556,6 +562,15 @@ void thread::main()
 thread* thread::current()
 {
     return sched::s_current;
+}
+
+thread* thread::current_safe()
+{
+    thread* current;
+    if (!safe_load(&sched::s_current, current)) {
+        return nullptr;
+    }
+    return current;
 }
 
 void thread::wait()

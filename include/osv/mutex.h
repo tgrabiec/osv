@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
+#include <osv/lockdep.h>
 
 // To use the spin-lock-based mutex instead of lockfree::mutex everywhere,
 // change #define LOCKFREE_MUTEX here to #undef.
@@ -18,7 +19,8 @@
 
 #ifdef LOCKFREE_MUTEX
 #define LOCKFREE_MUTEX_ALIGN void*
-#define LOCKFREE_MUTEX_SIZE 40
+#define LOCKDEP_HOOK_SIZE 8
+#define LOCKFREE_MUTEX_SIZE (40+LOCKDEP_HOOK_SIZE)
 #ifdef __cplusplus
 /** C++ **/
 #include <lockfree/mutex.hh>
@@ -44,6 +46,10 @@ static inline bool mutex_owned(mutex_t* m)
 {
     return m->owned();
 }
+static inline void mutex_destroy(mutex_t* m)
+{
+    return m->on_destroy();
+}
 #else
 /** C **/
 typedef struct mutex {
@@ -56,14 +62,19 @@ void lockfree_mutex_lock(void *m);
 void lockfree_mutex_unlock(void *m);
 bool lockfree_mutex_try_lock(void *m);
 bool lockfree_mutex_owned(void *m);
+bool lockfree_mutex_destroy(void *m);
+void lockfree_mutex_set_lockdep_class(void *m, lockdep_lock_class* lock_class);
 static inline void mutex_lock(mutex_t *m) { lockfree_mutex_lock(m); }
 static inline void mutex_unlock(mutex_t *m) { lockfree_mutex_unlock(m); }
 static inline bool mutex_trylock(mutex_t *m) { return lockfree_mutex_try_lock(m); }
 static inline bool mutex_owned(mutex_t *m) { return lockfree_mutex_owned(m); }
+static inline void mutex_destroy(mutex_t* m) { lockfree_mutex_destroy(m); }
+static inline void mutex_set_lockdep_class(mutex_t* m, lockdep_lock_class* lock_class) {
+    lockfree_mutex_set_lockdep_class(m, lock_class);
+}
 #endif
 /** both C and C++ code currently use these, though they should be C-only  **/
 static inline void mutex_init(mutex_t* m) { memset(m, 0, sizeof(mutex_t)); }
-static inline void mutex_destroy(mutex_t* m) { }
 #define MUTEX_INITIALIZER   {}
 #endif /* LOCKFREE_MUTEX */
 
