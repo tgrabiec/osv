@@ -127,9 +127,13 @@ int zio_buf_debug_limit = 16384;
 int zio_buf_debug_limit = 0;
 #endif
 
+static lockdep_lock_class zio_lockdep_class;
+
 void
 zio_init(void)
 {
+	lockdep_new_class(&zio_lockdep_class, "zio");
+
 	size_t c;
 	zio_cache = kmem_cache_create("zio_cache",
 	    sizeof (zio_t), 0, NULL, NULL, NULL, NULL, NULL, 0);
@@ -555,6 +559,7 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, const blkptr_t *bp,
 	bzero(zio, sizeof (zio_t));
 
 	mutex_init(&zio->io_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_set_lockdep_class(&zio->io_lock, &zio_lockdep_class);
 	cv_init(&zio->io_cv, NULL, CV_DEFAULT, NULL);
 
 	list_create(&zio->io_parent_list, sizeof (zio_link_t),
