@@ -55,7 +55,9 @@ def start_osv_qemu():
         "-gdb", "tcp::1234,server,nowait",
         "-m", cmdargs.memsize,
         "-smp", cmdargs.vcpus,
-        "-drive", "file=%s,if=virtio,cache=%s" % (image_file, cache)]
+        "-drive", "file=%s,if=virtio,cache=%s" % (image_file, cache),
+        "-drive", "file=build/debug/disk2.img,if=virtio,cache=%s" % (cache),
+        ]
     
     if (cmdargs.no_shutdown):
         args += ["-no-reboot", "-no-shutdown"]
