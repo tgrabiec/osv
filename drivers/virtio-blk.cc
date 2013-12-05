@@ -63,6 +63,8 @@ virtio_blk_read(struct device *dev, struct uio *uio, int ioflags)
 static int
 virtio_blk_write(struct device *dev, struct uio *uio, int ioflags)
 {
+    abort();
+
     struct virtio_blk_priv *prv =
         reinterpret_cast<struct virtio_blk_priv*>(dev->private_data);
 
@@ -167,13 +169,17 @@ void virtio_blk::response_worker()
 
     while (1) {
 
-        virtio_driver::wait_for_queue(queue, &vring::used_ring_not_empty);
+        while (!queue->used_ring_not_empty());
+        // virtio_driver::wait_for_queue(queue, &vring::used_ring_not_empty);
 
         u32 len;
         while((req = static_cast<virtio_blk_req*>(queue->get_buf_elem(&len))) != nullptr) {
             if (req->bio) {
                 switch (req->res.status) {
                 case VIRTIO_BLK_S_OK:
+#ifdef DDD
+                    kprintf("%ld bio done: %x\n", nanotime(), req->bio);
+#endif
                     biodone(req->bio, true);
                     break;
                 case VIRTIO_BLK_S_UNSUPP:
@@ -192,6 +198,8 @@ void virtio_blk::response_worker()
             delete req;
             queue->get_buf_finalize();
         }
+
+        // kprintf("%ld qlen %d\n", nanotime(), queue->get_avail());
 
         // wake up the requesting thread in case the ring was full before
         _request_thread_lock.lock();
@@ -213,6 +221,7 @@ static const int sector_size = 512;
 int virtio_blk::make_virtio_request(struct bio* bio)
 {
     // The lock is here for parallel requests protection
+    // auto start = nanotime();
     WITH_LOCK(_lock) {
 
         if (!bio) return EIO;
@@ -225,6 +234,11 @@ int virtio_blk::make_virtio_request(struct bio* bio)
 
         vring* queue = get_virt_queue(0);
         virtio_blk_request_type type;
+
+#ifdef DDD
+        auto start = nanotime();
+        virtio_w("%ld w %x %d\n", start, bio, bio->bio_bcount);
+    #endif
 
         switch (bio->bio_cmd) {
         case BIO_READ:
@@ -252,6 +266,8 @@ int virtio_blk::make_virtio_request(struct bio* bio)
         hdr->ioprio = 0;
         hdr->sector = bio->bio_offset / sector_size;
 
+        // kprintf("w %d\n", hdr->sector);
+
         queue->_sg_vec.clear();
         queue->_sg_vec.push_back(vring::sg_node(mmu::virt_to_phys(hdr), sizeof(struct virtio_blk_outhdr), vring_desc::VRING_DESC_F_READ));
 
@@ -274,16 +290,35 @@ int virtio_blk::make_virtio_request(struct bio* bio)
         queue->_sg_vec.push_back(vring::sg_node(mmu::virt_to_phys(&req->res), sizeof (struct virtio_blk_res), vring_desc::VRING_DESC_F_WRITE));
 
         while (!queue->add_buf(req)) {
-            _waiting_request_thread = sched::thread::current();
-            std::atomic_thread_fence(std::memory_order_seq_cst);
-            sched::thread::wait_until([queue] {queue->get_buf_gc(); return queue->avail_ring_has_room(queue->_sg_vec.size());});
-            WITH_LOCK(_request_thread_lock) {
-                _waiting_request_thread = nullptr;
+            // kprintf("%ld blocking\n", nanotime());
+
+            // _waiting_request_thread = sched::thread::current();
+            // std::atomic_thread_fence(std::memory_order_seq_cst);
+            // sched::thread::wait_until([queue] {
+            while (!queue->avail_ring_has_room(queue->_sg_vec.size())) {
+                queue->get_buf_gc();
+                // kprintf("%ld woken\n", nanotime());
+                // return queue->avail_ring_has_room(queue->_sg_vec.size());
             }
+            // });
+            // kprintf("%ld done\n", nanotime());
+            // WITH_LOCK(_request_thread_lock) {
+                // _waiting_request_thread = nullptr;
+            // }
         }
 
-        queue->kick();
+        // auto _kick = nanotime();
+        // auto _now = nanotime();
+        // if (_now - _last > 2000000) {
+            // _last = nanotime();
+            queue->kick();
+        // }
 
+// #ifdef DDD
+        // auto _now = nanotime();
+        // printf("%ld kick took %ld\n", _now, _now - _kick);
+        // printf("took %ld\n", _now - start);
+// #endif
         return 0;
     }
 }
@@ -296,7 +331,8 @@ u32 virtio_blk::get_driver_features(void)
                  | ( 1 << VIRTIO_BLK_F_GEOMETRY)
                  | ( 1 << VIRTIO_BLK_F_RO)
                  | ( 1 << VIRTIO_BLK_F_BLK_SIZE)
-                 | ( 1 << VIRTIO_BLK_F_CONFIG_WCE));
+                 | ( 1 << VIRTIO_BLK_F_CONFIG_WCE)
+                 | ( 1 << VIRTIO_BLK_F_WCE));
 }
 
 hw_driver* virtio_blk::probe(hw_device* dev)

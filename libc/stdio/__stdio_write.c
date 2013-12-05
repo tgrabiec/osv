@@ -1,6 +1,8 @@
 #include "stdio_impl.h"
 #include <sys/uio.h>
 #include <pthread.h>
+#include <assert.h>
+#include <osv/debug.h>
 #include "pthread_stubs.h"
 
 #if 0
@@ -21,13 +23,16 @@ size_t __stdio_write(FILE *f, const unsigned char *buf, size_t len)
 	size_t rem = iov[0].iov_len + iov[1].iov_len;
 	int iovcnt = 2;
 	ssize_t cnt;
+	// debug_ll("rem %d %d %d\n", rem, iov[0].iov_len, iov[1].iov_len);
 	for (;;) {
 		if (libc.main_thread) {
 			pthread_cleanup_push(cleanup, f);
 			cnt = writev(f->fd, iov, iovcnt);
 			pthread_cleanup_pop(0);
 		} else {
+			// debug_ll("_len=%d\n", iov->iov_len);
 			cnt = writev(f->fd, iov, iovcnt);
+			// debug_ll("_len=%d, -%d\n", iov->iov_len, cnt);
 		}
 		if (cnt == rem) {
 			f->wend = f->buf + f->buf_size;
@@ -39,6 +44,7 @@ size_t __stdio_write(FILE *f, const unsigned char *buf, size_t len)
 			f->flags |= F_ERR;
 			return iovcnt == 2 ? 0 : len-iov[0].iov_len;
 		}
+		debug_ll("here\n");
 		rem -= cnt;
 		if (cnt > iov[0].iov_len) {
 			f->wpos = f->wbase = f->buf;

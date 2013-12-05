@@ -28,6 +28,8 @@
 #include <sys/types.h>
 #include <osv/bio.h>
 #include <osv/device.h>
+#include <stdio.h>
+#include <time.h>
 
 #include <sys/zfs_context.h>
 #include <sys/spa_impl.h>
@@ -35,6 +37,11 @@
 #include <sys/fs/zfs.h>
 #include <sys/zio.h>
 
+static long __attribute__((unused)) nanotime() {
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	return (long) ts.tv_sec * 1000000000l + ts.tv_nsec;
+}
 
 struct vdev_disk {
 	struct device	*device;
@@ -115,6 +122,9 @@ static void vdev_disk_bio_done(struct bio *bio)
 	else
 		zio->io_error = 0;
 
+	// long _now = nanotime();
+	// printf("%ld %x bio done in %ld (%d)\n", _now, bio, _now - bio->start, bio->bio_bcount);
+
 	destroy_bio(bio);
 
 	zio_interrupt(zio);
@@ -141,7 +151,16 @@ vdev_disk_start_bio(zio_t *zio)
 	bio->bio_caller1 = zio;
 	bio->bio_done = vdev_disk_bio_done;
 
+	// long _now = nanotime();
+	// bio->start = _now;
+	// printf("%ld %x bio started\n", _now, bio);
+
+	// long _now11 = nanotime();
+
 	bio->bio_dev->driver->devops->strategy(bio);
+
+	// long _now2 = nanotime();
+	// printf("%ld %x bio inserted in %ld\n", _now2, bio, _now2 - _now11);
 	return ZIO_PIPELINE_STOP;
 }
 
@@ -158,6 +177,10 @@ vdev_disk_start_flush(zio_t *zio)
 
 	bio->bio_caller1 = zio;
 	bio->bio_done = vdev_disk_bio_done;
+
+	// long _now = nanotime();
+	// bio->start = _now;
+	// printf("flush\n", _now, bio);
 
 	bio->bio_dev->driver->devops->strategy(bio);
 	return ZIO_PIPELINE_STOP;

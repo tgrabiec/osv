@@ -138,6 +138,7 @@ do-sys-includes = $(foreach inc, $(sys-includes), -isystem $(inc))
 boost-tests := tests/tst-rename.so \
 	tests/tst-vfs.so \
 	tests/tst-libc-locking.so \
+	tests/tst-fs-stress.so \
 	tests/tst-bdev-write.so \
 	tests/tst-stat.so
 
@@ -460,7 +461,8 @@ zfs += bsd/sys/cddl/contrib/opensolaris/uts/common/fs/zfs/zle.o
 zfs += bsd/sys/cddl/contrib/opensolaris/uts/common/fs/zfs/zrlock.o
 zfs += bsd/sys/cddl/contrib/opensolaris/uts/common/fs/zfs/zvol.o
 
-zfs-tests += tests/tst-zfs-disk.so
+zfs-tests += tests/tst-zfs-disk.so 
+zfs-tests += tests/tst-zfs-iostat.so
 
 tests += tests/tst-zfs-mount.so
 

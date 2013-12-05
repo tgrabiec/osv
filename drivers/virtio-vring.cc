@@ -60,6 +60,10 @@ namespace virtio {
         _sg_vec.reserve(max_sgs);
     }
 
+    int vring::get_avail() {
+        return _avail_count + (_used_ring_host_head - _used_ring_guest_head);
+    }
+
     vring::~vring()
     {
         memory::free_phys_contiguous_aligned(_vring_ptr);
@@ -115,6 +119,7 @@ namespace virtio {
             if (_avail_count < desc_needed) {
                 //make sure the interrupts get there
                 //it probably should force an exit to the host
+                // printf("short %d\n", desc_needed);
                 kick();
 
                 return false;
@@ -146,8 +151,8 @@ namespace virtio {
             for (unsigned i = 0; i < _sg_vec.size(); i++) {
                 descp[idx]._flags = vring_desc::VRING_DESC_F_NEXT| _sg_vec[i]._flags;
                 descp[idx]._paddr = _sg_vec[i]._paddr;
-                descp[idx]._len = _sg_vec[i]._len;
-                prev_idx = idx;
+                descp[idx]._len = _sg_vec[i]._len
+;                prev_idx = idx;
                 idx = descp[idx]._next;
             }
             descp[prev_idx]._flags &= ~vring_desc::VRING_DESC_F_NEXT;
@@ -169,6 +174,7 @@ namespace virtio {
     {
             vring_used_elem elem;
 
+            std::atomic_thread_fence(std::memory_order_acquire);
             while (_used_ring_guest_head != _used_ring_host_head) {
 
                 int i = 1;
@@ -191,6 +197,8 @@ namespace virtio {
                 _avail_count += i;
                 _desc[idx]._next = _avail_head; //instead, how about the end of the list?
                 _avail_head = elem._id;  // what's the relation to the add_buf? can I just postpone this?
+
+                std::atomic_thread_fence(std::memory_order_acquire);
             }
     }
 
@@ -220,6 +228,7 @@ namespace virtio {
     void
     vring::get_buf_finalize()
     {
+            std::atomic_thread_fence(std::memory_order_release);
             _used_ring_host_head++;
 
             // only let the host know about our used idx in case irq are enabled
@@ -230,18 +239,21 @@ namespace virtio {
 
     bool vring::avail_ring_not_empty()
     {
+        std::atomic_thread_fence(std::memory_order_acquire);
         u16 effective_avail_count = _avail_count + (_used_ring_host_head - _used_ring_guest_head);
         return (effective_avail_count > 0);
     }
 
     bool vring::refill_ring_cond()
     {
+        std::atomic_thread_fence(std::memory_order_acquire);
         u16 effective_avail_count = _avail_count + (_used_ring_host_head - _used_ring_guest_head);
         return (effective_avail_count >= _num/2);
     }
 
     bool vring::avail_ring_has_room(int descriptors)
     {
+        std::atomic_thread_fence(std::memory_order_acquire);
         u16 effective_avail_count = _avail_count + (_used_ring_host_head - _used_ring_guest_head);
         if (use_indirect(descriptors))
             descriptors = 1;
@@ -250,7 +262,7 @@ namespace virtio {
 
     bool vring::used_ring_not_empty() const
     {
-        return (_used_ring_host_head != _used->_idx.load(std::memory_order_relaxed));
+        return (_used_ring_host_head != _used->_idx.load(std::memory_order_acquire));
     }
 
     bool vring::used_ring_is_half_empty() const

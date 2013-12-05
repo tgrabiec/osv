@@ -57,6 +57,11 @@ bdev_read(struct device *dev, struct uio *uio, int ioflags)
 	return 0;
 }
 
+void bdev_bio_done(struct bio* bio)
+{
+	destroy_bio(bio);
+}
+
 int
 bdev_write(struct device *dev, struct uio *uio, int ioflags)
 {
@@ -78,11 +83,6 @@ bdev_write(struct device *dev, struct uio *uio, int ioflags)
 		return 0;
     
 	while (uio->uio_resid > 0) {
-		struct iovec *iov = uio->uio_iov;
-
-		if (!iov->iov_len)
-			continue;
-
 		bp = getblk(dev, uio->uio_offset >> 9);
 
 		ret = uiomove(bp->b_data, BSIZE, uio);

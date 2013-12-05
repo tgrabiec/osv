@@ -21,6 +21,7 @@ static std::chrono::high_resolution_clock s_clock;
 
 static void bio_done(struct bio* bio)
 {
+    // printf("done %d\n", bio->bio_offset);
     free(bio->bio_data);
     destroy_bio(bio);
 }
@@ -56,7 +57,7 @@ int main(int argc, char const *argv[])
         auto bio = alloc_bio();
         bio->bio_cmd = BIO_WRITE;
         bio->bio_dev = dev;
-        bio->bio_data = malloc(buf_size);
+        bio->bio_data = aligned_alloc(4*KB, buf_size);
         bio->bio_offset = offset;
         bio->bio_bcount = buf_size;
         bio->bio_caller1 = bio;

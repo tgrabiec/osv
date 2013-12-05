@@ -1,5 +1,18 @@
 [manifest]
 /usr/lib/libgcc_s.so.1: %(gccbase)s/lib64/libgcc_s.so.1
+/usr/lib/libz.so.1: %(miscbase)s/usr/lib64/libz.so.1
+/usr/lib/&/libfontconfig.so.1: %(miscbase)s/usr/lib64/&
+/usr/lib/&/libfreetype.so.6: %(miscbase)s/usr/lib64/&
+/usr/lib/&/libexpat.so.1: %(miscbase)s/usr/lib64/&
+/usr/lib/&/libjpeg.so.62: %(miscbase)s/usr/lib64/&
+/usr/lib/&/libboost_unit_test_framework-mt.so.1.53.0: %(miscbase)s/usr/lib64/&
+/usr/lib/&/libboost_filesystem-mt.so.1.53.0: %(miscbase)s/usr/lib64/&
+/usr/lib/jni/balloon.so: java/jni/balloon.so
+/usr/lib/&/jni/elf-loader.so: java/&
+/usr/lib/&/jni/networking.so: java/&
+/usr/lib/&/jni/stty.so: java/&
+/usr/lib/&/jni/tracepoint.so: java/&
+/usr/lib/&/jni/power.so: java/&
 /usr/lib/jvm/&/jre/lib/amd64/server/libjvm.so: %(jdkbase)s/&
 /usr/lib/jvm/&/jre/lib/amd64/libverify.so: %(jdkbase)s/&
 /usr/lib/jvm/&/jre/lib/amd64/libjava.so: %(jdkbase)s/&
@@ -133,6 +146,8 @@
 /&/tests/tst-tcp.so: ./&
 /&/tests/tst-strerror_r.so: ./&
 /&/tests/tst-random.so: ./&
+/&/tests/tst-fs-stress.so: ./&
+/&/tests/tst-zfs-iostat.so: ./&
 /&/tests/tst-bdev-write.so: ./&
 /&/tests/bench/bench.jar: ./&
 /testrunner.so: ./tests/testrunner.so
@@ -145,3 +160,7 @@
 /&/etc/inputrc: ../../static/&
 /&/dev/.keep: ../../static/&
 /&/tmp/.keep: ../../static/&
+/libuutil.so: libuutil.so
+/zpool.so: zpool.so
+/libzfs.so: libzfs.so
+/zfs.so: zfs.so

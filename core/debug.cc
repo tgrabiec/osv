@@ -101,9 +101,9 @@ const char* logger::loggable_severity(logger_severity severity)
 
 void logger::wrt(const char* tag, logger_severity severity, const boost::format& _fmt)
 {
-    if (this->is_filtered(tag, severity)) {
-        return;
-    }
+    // if (this->is_filtered(tag, severity)) {
+    //     return;
+    // }
 
     unsigned long tid = sched::thread::current()->id();
     _lock.lock();
@@ -123,9 +123,9 @@ void logger::wrt(const char* tag, logger_severity severity, const char* _fmt, ..
 
 void logger::wrt(const char* tag, logger_severity severity, const char* _fmt, va_list ap)
 {
-    if (this->is_filtered(tag, severity)) {
-        return;
-    }
+    // if (this->is_filtered(tag, severity)) {
+    //     return;
+    // }
 
     unsigned long tid = sched::thread::current()->id();
     _lock.lock();

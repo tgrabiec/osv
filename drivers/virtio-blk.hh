@@ -15,6 +15,7 @@ namespace virtio {
 
     class virtio_blk : public virtio_driver {
     public:
+        long _last = 0;
 
         // The feature bitmap for virtio blk
         enum BlkFeatures {

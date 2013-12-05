@@ -60,7 +60,8 @@ struct buf {
 __BEGIN_DECLS
 struct buf *getblk(struct device *, int);
 int	bread(struct device *, int, struct buf **);
-int	bwrite(struct buf *);
+int bwrite(struct buf *);
+int	bwrite_async(struct buf *);
 void	bdwrite(struct buf *);
 void	binval(struct device *);
 void	brelse(struct buf *);

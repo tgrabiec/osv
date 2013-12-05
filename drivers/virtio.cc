@@ -64,13 +64,13 @@ bool virtio_driver::setup_features(void)
     //to the virtio spec
     for (int i=0;i<32;i++)
         if (subset & (1 << i))
-            virtio_d("%s: found feature intersec of bit %d", __FUNCTION__,  i);
+            printf("%s: found feature intersec of bit %d\n", __FUNCTION__,  i);
 
     if (subset & (1 << VIRTIO_RING_F_INDIRECT_DESC))
         set_indirect_buf_cap(true);
 
     if (subset & (1 << VIRTIO_RING_F_EVENT_IDX))
-            set_event_idx_cap(true);
+        set_event_idx_cap(true);
 
     set_guest_features(subset);
 

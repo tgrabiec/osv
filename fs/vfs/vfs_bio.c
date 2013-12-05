@@ -71,7 +71,7 @@ static struct buf buf_table[NBUFS];
 static TAILQ_HEAD(, buf) free_list = TAILQ_HEAD_INITIALIZER(free_list);
 
 static sem_t free_sem;
-
+	
 /*
  * Insert buffer to the head of free list
  */
@@ -141,6 +141,45 @@ rw_buf(struct buf *bp, int rw)
 
 	destroy_bio(bio);
 	return ret;
+}
+
+struct a {
+	struct buf *bp;
+	struct bio *bio;
+};
+
+static void async_bio_done(struct a* _a)
+{
+	destroy_bio(_a->bio);
+	BIO_LOCK();
+	SET(_a->bp->b_flags, B_DONE);
+	BIO_UNLOCK();
+	brelse(_a->bp);
+	free(_a);
+}
+
+static int
+rw_buf_async(struct buf *bp, int rw)
+{
+	struct bio *bio;
+
+	bio = alloc_bio();
+	if (!bio)
+		return ENOMEM;
+
+	bio->bio_cmd = rw ? BIO_WRITE : BIO_READ;
+	bio->bio_dev = bp->b_dev;
+	bio->bio_data = bp->b_data;
+	bio->bio_offset = bp->b_blkno << 9;
+	bio->bio_bcount = BSIZE;
+	struct a* ap = malloc(sizeof(struct a));
+	ap->bp = bp;
+	ap->bio = bio;
+	bio->bio_caller1 = ap;
+	bio->bio_done = (void (*)(struct bio*)) &async_bio_done;
+
+	bio->bio_dev->driver->devops->strategy(bio);
+	return 0;
 }
 
 /*
@@ -287,6 +326,31 @@ bwrite(struct buf *bp)
 
 	size = BSIZE;
 	error = rw_buf(bp, 1);
+	if (error)
+		return error;
+	BIO_LOCK();
+	SET(bp->b_flags, B_DONE);
+	BIO_UNLOCK();
+	brelse(bp);
+	return 0;
+}
+
+int
+bwrite_async(struct buf *bp)
+{
+	size_t size;
+	int error;
+
+	ASSERT(ISSET(bp->b_flags, B_BUSY));
+	DPRINTF(VFSDB_BIO, ("bwrite: dev=%x blkno=%d\n", bp->b_dev,
+			    bp->b_blkno));
+
+	BIO_LOCK();
+	CLR(bp->b_flags, (B_READ | B_DONE | B_DELWRI));
+	BIO_UNLOCK();
+
+	size = BSIZE;
+	error = rw_buf_async(bp, 1);
 	if (error)
 		return error;
 	BIO_LOCK();

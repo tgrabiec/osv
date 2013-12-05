@@ -152,6 +152,8 @@ class virtio_driver;
         // be seen by the reading threads
         void set_used_event(u16 event, std::memory_order order) {_used_event->store(event, order);};
 
+        int get_avail();
+
 
         // Let host know about interrupt delivery
         void disable_interrupts();
@@ -202,7 +204,7 @@ class virtio_driver;
         vring_used *_used;
         // cookies to store access to the upper layer pointers
         void** _cookie;
-        //protects parallel get_bug /add_buf access, mainly the _avail_head variable
+        //protects parallel get_buf /add_buf access, mainly the _avail_head variable
         mutex _lock;
         // pointer to the end of the used ring to get a glimpse of the host avail idx
         std::atomic<u16> *_avail_event;
