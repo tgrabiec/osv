@@ -937,6 +937,7 @@ init_table get_init(Elf64_Ehdr* header)
     auto phdr = static_cast<Elf64_Phdr*>(pbase + header->e_phoff);
     auto n = header->e_phnum;
     bool base_adjusted = false;
+    bool tls_read = false;
     init_table ret;
     for (auto i = 0; i < n; ++i, ++phdr) {
         if (!base_adjusted && phdr->p_type == PT_LOAD) {
@@ -1030,7 +1031,7 @@ init_table get_init(Elf64_Ehdr* header)
                         *static_cast<u64*>(addr) = lookup()->st_value;
                         break;
                     case R_X86_64_TPOFF64:
-                        // FIXME: assumes TLS segment comes before DYNAMIC segment
+                        assert(tls_read);
                         *static_cast<u64*>(addr) = lookup()->st_value - ret.tls.size;
                         break;
                     case R_X86_64_IRELATIVE:
@@ -1045,9 +1046,11 @@ init_table get_init(Elf64_Ehdr* header)
             relocate_table(rela, nrela);
             relocate_table(jmp, njmp);
         } else if (phdr->p_type == PT_TLS) {
+            assert(!tls_read);
             ret.tls.start = reinterpret_cast<void*>(phdr->p_vaddr);
             ret.tls.filesize = phdr->p_filesz;
             ret.tls.size = phdr->p_memsz;
+            tls_read = true;
         }
     }
     return ret;
