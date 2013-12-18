@@ -677,16 +677,12 @@ class TimedTrace:
 class TraceConstants:
     def __init__(self):
         self.backtrace_len = ulong(gdb.parse_and_eval('tracepoint_base::backtrace_len'))
-        self.bt_format = '   [' + str.join(' ', ['%s'] * self.backtrace_len) + ']'
 
 class BacktraceFormatter:
-    def __init__(self, trace_constants):
-        self.trace_constants = trace_constants
-
     def __call__(self, backtrace):
         if not backtrace:
             return ''
-        return self.trace_constants.bt_format % tuple([syminfo(x) for x in backtrace])
+        return '   [' + ' '.join(str(syminfo(x)) for x in backtrace if x) + ']'
 
 def all_traces():
     constants = TraceConstants()
@@ -738,7 +734,7 @@ def format_time(time):
 def dump_trace(out_func):
     indents = defaultdict(int)
     constants = TraceConstants()
-    bt_formatter = BacktraceFormatter(constants)
+    bt_formatter = BacktraceFormatter()
 
     def lookup_tp(name):
         return gdb.lookup_global_symbol(name).value().dereference()
