@@ -11,6 +11,7 @@ import operator
 from glob import glob
 from collections import defaultdict
 from itertools import ifilter
+from operator import attrgetter
 
 build_dir = os.path.dirname(gdb.current_objfile().filename)
 external = build_dir + '/../../external'
@@ -778,6 +779,200 @@ def dump_trace(out_func):
         else:
             out_func('%s\n' % str(trace))
 
+
+class TreeNode(object):
+    def __init__(self, name):
+        self.name = name
+        self.children_by_name = {}
+
+    def get_or_add(self, name):
+        node = self.children_by_name.get(name, None)
+        if not node:
+            node = self.__class__(name)
+            self.add(node)
+        return node
+
+    def get_child(self, name):
+        return self.children_by_name.get(name, None)
+
+    def add(self, node):
+        self.children_by_name[node.name] = node
+
+    @property
+    def children(self):
+      return self.children_by_name.itervalues()
+
+def default_printer(text):
+  sys.stdout.write(text)
+
+def print_tree(root_node,
+        formatter=attrgetter('name'),
+        order_by=attrgetter('name'),
+        out_func=default_printer,
+        node_filter=None):
+
+    def print_node(node, last_flags):
+        stems    = ("|   ", "    ")
+        branches = ("|-- ", "\-- ")
+
+        stem_prefixes = []
+        for is_last in last_flags[:-1]:
+            stem_prefixes.append(stems[is_last])
+
+        out_func(''.join(stem_prefixes))
+
+        if last_flags:
+            out_func(branches[last_flags[-1]])
+
+        out_func("%s\n" % formatter(node))
+
+        children = sorted(filter(node_filter, node.children), key=order_by)
+        for child in children[:-1]:
+            print_node(child, last_flags + [False])
+
+        if children:
+            print_node(children[-1], last_flags + [True])
+            if last_flags and not last_flags[-1]:
+                out_func("%s%s\n" % (''.join(stem_prefixes), stems[False]))
+
+    print_node(root_node, [])
+
+class TimedFunction(TreeNode):
+    def __init__(self, symbol):
+        super(TimedFunction, self).__init__(symbol)
+        self.hit_count = 0
+        self.resident_time = 0
+
+    def hit(self, duration=None):
+        self.hit_count += 1
+        if duration:
+            self.resident_time += duration
+
+def format_time_human_readable(time):
+    units = [(1e9, "s"), (1e6, "ms"), (1e3, "us"), (1e0, "ns")]
+    for level, name in units:
+        if time >= level:
+            return "%.2f %s" % (float(time) / level, name)
+    return str(time)
+
+class SymbolResolver:
+    cache = {}
+
+    def resolve(self, addr):
+        if addr in self.cache:
+            return self.cache[addr]
+
+        sym_addr_text = '0x%x' % addr
+        infosym = gdb.execute('info symbol %s' % sym_addr_text, False, True)
+        if "No symbol" in infosym:
+            sym = sym_addr_text
+        else:
+            sym = infosym[:infosym.find(" + ")]
+
+        self.cache[addr] = sym
+        return sym
+
+def strip_garbage(backtrace):
+    if backtrace[0].startswith('tracepoint_base::do_log_backtrace'):
+        backtrace = backtrace[1:]
+    for i, sym in enumerate(backtrace):
+        if sym == 'thread_main_c':
+            return backtrace[:i]
+    return backtrace
+
+class ProfSample:
+    def __init__(self, thread, backtrace, duration):
+        self.thread = thread
+        self.backtrace = backtrace
+        self.duration = duration
+
+def get_wait_profile():
+    return get_tracepoint_profile("sched_wait", "sched_resumed")
+
+def assert_trace_active(trace):
+    if not tracepoint_is_active(trace):
+        raise Exception("Tracepoint %s not active. Did you start with --trace=%s ?" % (trace, trace))
+
+def get_tracepoint_profile(entry_trace_name, exit_trace_name):
+    assert_trace_active(entry_trace_name)
+    assert_trace_active(exit_trace_name)
+
+    symbols = SymbolResolver()
+    entry_traces_per_thread = {}
+
+    for trace in all_traces():
+        if not trace.backtrace:
+            # Some early traces are collected with backtraces not yet enabled
+            continue
+
+        if trace.name == entry_trace_name:
+            if trace.thread in entry_traces_per_thread:
+                old = entry_traces_per_thread[trace.thread]
+                raise Exception('Double entry:\n%s\n%s\n' % (str(old), str(trace)))
+            entry_traces_per_thread[trace.thread] = trace
+
+        elif trace.name == exit_trace_name:
+            entry_trace = entry_traces_per_thread.pop(trace.thread, None)
+            if not entry_trace:
+                continue
+
+            duration = trace.time - entry_trace.time
+            call_trace = strip_garbage(list(map(symbols.resolve, ifilter(None, trace.backtrace))))
+            yield ProfSample(trace.thread, call_trace, duration)
+
+
+def print_profile(samples, bottom_up=False, split_threads=True, out_func=default_printer):
+    root = TimedFunction('All')
+    thread_profiles = {}
+
+    for sample in samples:
+        if split_threads:
+            node = thread_profiles.get(sample.thread, None)
+            if not node:
+                node = TimedFunction('All')
+                thread_profiles[sample.thread] = node
+        else:
+            node = root
+
+        node.hit(sample.duration)
+
+        frames = list(sample.backtrace)
+        if bottom_up:
+            frames.reverse()
+
+        for symbol in frames:
+            node = node.get_or_add(symbol)
+            node.hit(sample.duration)
+
+    def format_node(node, root):
+        percentage = float(node.resident_time) * 100 / root.resident_time
+        return "%s (%.2f%%, #%d) %s" % (
+             format_time_human_readable(node.resident_time),
+             percentage,
+             node.hit_count,
+             node.name)
+
+    def order_by_resident_time(func):
+        return -func.resident_time
+
+    node_filter = lambda node: node.resident_time > 0
+    order = order_by_resident_time
+
+    if split_threads:
+        for thread, profile in thread_profiles.iteritems():
+            out_func("\n=== Thread 0x%x ===\n\n" % thread)
+            print_tree(profile,
+                lambda node: format_node(node, profile),
+                order_by=order,
+                out_func=out_func,
+                node_filter=node_filter)
+    else:
+        print_tree(root,
+            lambda node: format_node(node, root),
+            order_by=order,
+            out_func=out_func,
+            node_filter=node_filter)
+
 def get_name_of_ended_func(name):
         m = re.match('(?P<func>.*)(_ret|_err)', name)
         if not m:
@@ -785,11 +980,20 @@ def get_name_of_ended_func(name):
 
         return m.group('func')
 
+def tracepoints():
+    return intrusive_list(gdb.lookup_global_symbol("tracepoint_base::tp_list").value())
+
+def tracepoint_is_active(name):
+    for tp in tracepoints():
+        if tp['name'].string() == name:
+            return bool(tp['active'])
+    raise Exception("No such tracepoint: " + name)
+
 # Block tracepoint begins a code block and is accompanied with
 # tracepoints for block exit whose names end with _ret and _err
 def get_block_tracepoints():
     block_tracepoints = set()
-    for trace_point in intrusive_list(gdb.lookup_global_symbol("tracepoint_base::tp_list").value()):
+    for trace_point in tracepoints():
         ended = get_name_of_ended_func(trace_point['name'].string())
         if ended:
             block_tracepoints.add(ended)
@@ -1004,6 +1208,12 @@ class osv_trace(gdb.Command):
     def invoke(self, arg, from_tty):
         dump_trace(gdb.write)
 
+class osv_wait_prof(gdb.Command):
+    def __init__(self):
+        gdb.Command.__init__(self, 'osv wait-prof', gdb.COMMAND_USER, gdb.COMPLETE_COMMAND, True)
+    def invoke(self, arg, from_tty):
+        print_profile(get_wait_profile(), out_func=gdb.write)
+
 class osv_trace_summary(gdb.Command):
     def __init__(self):
         gdb.Command.__init__(self, 'osv trace summary', gdb.COMMAND_USER, gdb.COMPLETE_NONE)
@@ -1147,6 +1357,7 @@ osv_thread()
 osv_thread_apply()
 osv_thread_apply_all()
 osv_trace()
+osv_wait_prof()
 osv_trace_summary()
 osv_trace_duration()
 osv_trace_file()
