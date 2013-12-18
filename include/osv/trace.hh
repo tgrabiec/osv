@@ -258,7 +258,7 @@ private:
     void update();
     static std::unordered_set<tracepoint_id>& known_ids();
     static bool _log_backtrace;
-    static const size_t backtrace_len = 10;
+    static const size_t backtrace_len = 30;
 };
 
 namespace {
