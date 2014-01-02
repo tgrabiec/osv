@@ -35,6 +35,7 @@
 #include <sys/dmu_objset.h>
 #include <sys/arc.h>
 #include <sys/ddt.h>
+#include <osv/trace.h>
 
 SYSCTL_DECL(_vfs_zfs);
 SYSCTL_NODE(_vfs_zfs, OID_AUTO, zio, CTLFLAG_RW, 0, "ZFS ZIO");
@@ -543,6 +544,7 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, const blkptr_t *bp,
 {
 	zio_t *zio;
 
+
 	ASSERT3U(size, <=, SPA_MAXBLOCKSIZE);
 	ASSERT(P2PHASE(size, SPA_MINBLOCKSIZE) == 0);
 	ASSERT(P2PHASE(offset, SPA_MINBLOCKSIZE) == 0);
@@ -553,6 +555,10 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, const blkptr_t *bp,
 
 	zio = kmem_cache_alloc(zio_cache, KM_SLEEP);
 	bzero(zio, sizeof (zio_t));
+
+	static uint64_t next_id = 0;
+	zio->id = atomic_add_64_nv(&next_id, 1);
+	__trace_zio_create(zio->id);
 
 	mutex_init(&zio->io_lock, NULL, MUTEX_DEFAULT, NULL);
 	cv_init(&zio->io_cv, NULL, CV_DEFAULT, NULL);
@@ -2383,6 +2389,9 @@ zio_alloc_zil(spa_t *spa, uint64_t txg, blkptr_t *new_bp, blkptr_t *old_bp,
 		BP_SET_BYTEORDER(new_bp, ZFS_HOST_BYTEORDER);
 	}
 
+	__trace_sth();
+	my_printf_bp(new_bp, "%s", "new bp");
+
 	return (error);
 }
 
@@ -2714,6 +2723,7 @@ zio_checksum_verify(zio_t *zio)
 	}
 
 	if ((error = zio_checksum_error(zio, &info)) != 0) {
+		__trace_cksum(zio->id);
 		zio->io_error = error;
 		if (!(zio->io_flags & ZIO_FLAG_SPECULATIVE)) {
 			zfs_ereport_start_checksum(zio->io_spa,
@@ -2870,7 +2880,6 @@ zio_done(zio_t *zio)
 	zio_inherit_child_errors(zio, ZIO_CHILD_VDEV);
 	zio_inherit_child_errors(zio, ZIO_CHILD_GANG);
 	zio_inherit_child_errors(zio, ZIO_CHILD_DDT);
-
 	/*
 	 * If the I/O on the transformed data was successful, generate any
 	 * checksum reports now while we still have the transformed data.

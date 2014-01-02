@@ -145,6 +145,7 @@
 /&/tests/tst-promise.so: ./&
 /&/tests/tst-timerfd.so: ./&
 /&/tests/bench/bench.jar: ./&
+/&/tests/zfs-iostat.so: ./&
 /testrunner.so: ./tests/testrunner.so
 /java/Hello.class: ./tests/hello/Hello.class
 /java.so: java/java.so

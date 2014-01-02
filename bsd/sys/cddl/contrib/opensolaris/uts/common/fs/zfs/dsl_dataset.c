@@ -48,6 +48,7 @@
 #include <sys/zvol.h>
 #include <sys/dsl_scan.h>
 #include <sys/dsl_deadlist.h>
+#include <osv/trace.h>
 
 static char *dsl_reaper = "the grim reaper";
 
@@ -3236,8 +3237,10 @@ dsl_dataset_clone_swap_check(void *arg1, void *arg2, dmu_tx_t *tx)
 		return (ENOSPC);
 
 	if (csa->ohds->ds_quota != 0 &&
-	    csa->cds->ds_phys->ds_unique_bytes > csa->ohds->ds_quota)
+	    csa->cds->ds_phys->ds_unique_bytes > csa->ohds->ds_quota){
+		__trace_sth();
 		return (EDQUOT);
+	}
 
 	return (0);
 }
@@ -3465,8 +3468,10 @@ dsl_dataset_check_quota(dsl_dataset_t *ds, boolean_t check_quota,
 		if (inflight > 0 ||
 		    ds->ds_phys->ds_referenced_bytes < ds->ds_quota)
 			error = ERESTART;
-		else
+		else {
+			__trace_sth();
 			error = EDQUOT;
+		}
 	}
 	mutex_exit(&ds->ds_lock);
 

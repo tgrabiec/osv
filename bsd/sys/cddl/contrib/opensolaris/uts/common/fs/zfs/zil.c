@@ -38,7 +38,7 @@
 #include <sys/vdev_impl.h>
 #include <sys/dmu_tx.h>
 #include <sys/dsl_pool.h>
-
+#include <osv/trace.h>
 /*
  * The zfs intent log (ZIL) saves transaction records of system calls
  * that change the file system in memory with enough information
@@ -327,6 +327,8 @@ zil_parse(zilog_t *zilog, zil_parse_blk_func_t *parse_blk_func,
 		int reclen;
 		char *end;
 
+		my_printf_bp(&blk, "%s", "zil_block");
+
 		if (blk_seq > claim_blk_seq)
 			break;
 		if ((error = parse_blk_func(zilog, &blk, arg, txg)) != 0)
@@ -361,6 +363,8 @@ done:
 	zilog->zl_parse_lr_seq = max_lr_seq;
 	zilog->zl_parse_blk_count = blk_count;
 	zilog->zl_parse_lr_count = lr_count;
+
+	printf("lrcount=%d\n", lr_count);
 
 	ASSERT(!claimed || !(zh->zh_flags & ZIL_CLAIM_LR_SEQ_VALID) ||
 	    (max_blk_seq == claim_blk_seq && max_lr_seq == claim_lr_seq));
@@ -848,6 +852,7 @@ zil_lwb_write_done(zio_t *zio)
 	 */
 	zio_buf_free(lwb->lwb_buf, lwb->lwb_sz);
 	mutex_enter(&zilog->zl_lock);
+	my_printf_bp(zio->io_bp, "%s", "lwb done");
 	lwb->lwb_buf = NULL;
 	lwb->lwb_tx = NULL;
 	mutex_exit(&zilog->zl_lock);
@@ -947,6 +952,8 @@ zil_lwb_write_start(zilog_t *zilog, lwb_t *lwb)
 	dsl_dataset_dirty(dmu_objset_ds(zilog->zl_os), tx);
 	txg = dmu_tx_get_txg(tx);
 
+	printf("assigned txg %d\n", txg);
+
 	lwb->lwb_tx = tx;
 
 	/*
@@ -975,6 +982,8 @@ zil_lwb_write_start(zilog_t *zilog, lwb_t *lwb)
 	for (i = 0; i < ZIL_PREV_BLKS; i++)
 		zil_blksz = MAX(zil_blksz, zilog->zl_prev_blks[i]);
 	zilog->zl_prev_rotor = (zilog->zl_prev_rotor + 1) & (ZIL_PREV_BLKS - 1);
+
+	// my_printf_bp(bp, "%s", "sentinel");
 
 	BP_ZERO(bp);
 	/* pass the old blkptr in order to spread log blocks across devs */
@@ -1014,6 +1023,8 @@ zil_lwb_write_start(zilog_t *zilog, lwb_t *lwb)
 	bzero(lwb->lwb_buf + lwb->lwb_nused, wsz - lwb->lwb_nused);
 
 	zio_nowait(lwb->lwb_zio); /* Kick off the write for the old log block */
+
+	my_printf_bp(&lwb->lwb_blk, "%s", "prev bp");
 
 	/*
 	 * If there was an allocation failure then nlwb will be null which
@@ -1455,12 +1466,17 @@ zil_commit_writer(zilog_t *zilog)
 
 	zil_get_commit_list(zilog);
 
+	printf("zil commit start\n");
+
+	__trace_sth();
+
 	/*
 	 * Return if there's nothing to commit before we dirty the fs by
 	 * calling zil_create().
 	 */
 	if (list_head(&zilog->zl_itx_commit_list) == NULL) {
 		mutex_enter(&zilog->zl_lock);
+		printf("zil nothing to do\n");
 		return;
 	}
 
@@ -1486,8 +1502,10 @@ zil_commit_writer(zilog_t *zilog)
 	DTRACE_PROBE1(zil__cw2, zilog_t *, zilog);
 
 	/* write the last block out */
-	if (lwb != NULL && lwb->lwb_zio != NULL)
+	if (lwb != NULL && lwb->lwb_zio != NULL) {
+		printf("wr last\n");
 		lwb = zil_lwb_write_start(zilog, lwb);
+	}
 
 	zilog->zl_cur_used = 0;
 
@@ -1499,6 +1517,8 @@ zil_commit_writer(zilog_t *zilog)
 		zilog->zl_root_zio = NULL;
 		zil_flush_vdevs(zilog);
 	}
+
+	printf("zil commit done\n");
 
 	if (error || lwb == NULL)
 		txg_wait_synced(zilog->zl_dmu_pool, 0);
@@ -1545,6 +1565,8 @@ zil_commit(zilog_t *zilog, uint64_t foid)
 	if (zilog->zl_sync == ZFS_SYNC_DISABLED)
 		return;
 
+	__trace_zil_commit();
+
 	/* move the async itxs for the foid to the sync queues */
 	zil_async_to_sync(zilog, foid);
 
@@ -1554,9 +1576,12 @@ zil_commit(zilog_t *zilog, uint64_t foid)
 		cv_wait(&zilog->zl_cv_batch[mybatch & 1], &zilog->zl_lock);
 		if (mybatch <= zilog->zl_com_batch) {
 			mutex_exit(&zilog->zl_lock);
+			printf("not my batch\n");
 			return;
 		}
 	}
+
+	printf("about to zil commit\n");
 
 	zilog->zl_next_batch++;
 	zilog->zl_writer = B_TRUE;
@@ -1564,6 +1589,8 @@ zil_commit(zilog_t *zilog, uint64_t foid)
 	zilog->zl_com_batch = mybatch;
 	zilog->zl_writer = B_FALSE;
 	mutex_exit(&zilog->zl_lock);
+
+	printf("done\n");
 
 	/* wake up one thread to become the next writer */
 	cv_signal(&zilog->zl_cv_batch[(mybatch+1) & 1]);
@@ -1578,6 +1605,8 @@ zil_commit(zilog_t *zilog, uint64_t foid)
 void
 zil_sync(zilog_t *zilog, dmu_tx_t *tx)
 {
+	printf("zil_sync %d\n", tx->tx_txg);
+
 	zil_header_t *zh = zil_header_in_syncing_context(zilog);
 	uint64_t txg = dmu_tx_get_txg(tx);
 	spa_t *spa = zilog->zl_spa;
@@ -1624,9 +1653,13 @@ zil_sync(zilog_t *zilog, dmu_tx_t *tx)
 	}
 
 	while ((lwb = list_head(&zilog->zl_lwb_list)) != NULL) {
+		my_printf_bp(&lwb->lwb_blk, "%s", "next");
+
 		zh->zh_log = lwb->lwb_blk;
-		if (lwb->lwb_buf != NULL || lwb->lwb_max_txg > txg)
+		if (lwb->lwb_buf != NULL || lwb->lwb_max_txg > txg) {
+			printf("%d %d %d\n", lwb->lwb_buf, lwb->lwb_max_txg, txg);
 			break;
+		}
 		list_remove(&zilog->zl_lwb_list, lwb);
 		zio_free_zil(spa, txg, &lwb->lwb_blk);
 		kmem_cache_free(zil_lwb_cache, lwb);
@@ -1637,8 +1670,10 @@ zil_sync(zilog_t *zilog, dmu_tx_t *tx)
 		 * out the zil_header blkptr so that we don't end
 		 * up freeing the same block twice.
 		 */
-		if (list_head(&zilog->zl_lwb_list) == NULL)
+		if (list_head(&zilog->zl_lwb_list) == NULL) {
+			printf("zeroing\n");
 			BP_ZERO(&zh->zh_log);
+		}
 	}
 	mutex_exit(&zilog->zl_lock);
 }

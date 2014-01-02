@@ -364,6 +364,8 @@ typedef struct zio_link {
 } zio_link_t;
 
 struct zio {
+	uint64_t id;
+
 	/* Core information about this I/O */
 	zbookmark_t	io_bookmark;
 	zio_prop_t	io_prop;

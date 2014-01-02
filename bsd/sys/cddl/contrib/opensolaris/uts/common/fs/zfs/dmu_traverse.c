@@ -81,6 +81,8 @@ traverse_zil_block(zilog_t *zilog, blkptr_t *bp, void *arg, uint64_t claim_txg)
 	SET_BOOKMARK(&zb, td->td_objset, ZB_ZIL_OBJECT, ZB_ZIL_LEVEL,
 	    bp->blk_cksum.zc_word[ZIL_ZC_SEQ]);
 
+	my_printf_bp(bp, "%s", "zil");
+
 	(void) td->td_func(td->td_spa, zilog, bp, NULL, &zb, NULL, td->td_arg);
 
 	return (0);

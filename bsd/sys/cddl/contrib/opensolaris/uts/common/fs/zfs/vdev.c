@@ -2355,6 +2355,8 @@ vdev_clear(spa_t *spa, vdev_t *vd)
 	if (vd == NULL)
 		vd = rvd;
 
+	printf("clearing, had %d cksum errors\n", vd->vdev_stat.vs_checksum_errors);
+
 	vd->vdev_stat.vs_read_errors = 0;
 	vd->vdev_stat.vs_write_errors = 0;
 	vd->vdev_stat.vs_checksum_errors = 0;

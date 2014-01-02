@@ -14,6 +14,7 @@
 #include <boost/range/algorithm/remove.hpp>
 #include <debug.hh>
 #include "prio.hh"
+#include "osv/trace.h"
 #include <osv/execinfo.hh>
 
 using namespace std;
@@ -283,3 +284,27 @@ extern "C" void __cyg_profile_func_exit(void *this_fn, void *call_site)
     irq.restore();
 }
 
+TRACEPOINT(trace_sth, "");
+TRACEPOINT(trace_zio_create, "id=%u", uint64_t);
+TRACEPOINT(trace_cksum, "id=%u", uint64_t);
+TRACEPOINT(trace_zil_commit, "");
+
+void __trace_zil_commit()
+{
+    trace_zil_commit();
+}
+
+void __trace_sth()
+{
+    trace_sth();
+}
+
+void __trace_cksum(uint64_t id)
+{
+    trace_cksum(id);
+}
+
+void __trace_zio_create(uint64_t id)
+{
+    trace_zio_create(id);
+}

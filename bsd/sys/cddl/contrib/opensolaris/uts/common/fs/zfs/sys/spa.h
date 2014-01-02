@@ -688,6 +688,14 @@ extern void spa_configfile_set(spa_t *, nvlist_t *, boolean_t);
 /* asynchronous event notification */
 extern void spa_event_notify(spa_t *spa, vdev_t *vdev, const char *name);
 
+#define	my_printf_bp(bp, fmt, ...) do {				\
+	char *__blkbuf = kmem_alloc(BP_SPRINTF_LEN, KM_SLEEP);	\
+	sprintf_blkptr(__blkbuf, (bp));				\
+	printf(fmt " %s\n", __VA_ARGS__, __blkbuf);		\
+	kmem_free(__blkbuf, BP_SPRINTF_LEN);			\
+ } while (0)
+
+
 #ifdef ZFS_DEBUG
 #define	dprintf_bp(bp, fmt, ...) do {				\
 	if (zfs_flags & ZFS_DEBUG_DPRINTF) { 			\

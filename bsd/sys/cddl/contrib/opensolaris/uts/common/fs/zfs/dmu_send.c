@@ -48,6 +48,8 @@
 #include <sys/ddt.h>
 #include <sys/zfs_onexit.h>
 
+ #include <osv/trace.h>
+
 /* Set this tunable to TRUE to replace corrupt data with 0x2f5baddb10c */
 int zfs_send_corrupt_data = B_FALSE;
 
@@ -1543,8 +1545,10 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, struct file *fp, offset_t *voffp,
 			 * value, because the stored checksum is of
 			 * everything before the DRR_END record.
 			 */
-			if (!ZIO_CHECKSUM_EQUAL(drre.drr_checksum, pcksum))
+			if (!ZIO_CHECKSUM_EQUAL(drre.drr_checksum, pcksum)) {
+				__trace_cksum();
 				ra.err = ECKSUM;
+			}
 			goto out;
 		}
 		case DRR_SPILL:

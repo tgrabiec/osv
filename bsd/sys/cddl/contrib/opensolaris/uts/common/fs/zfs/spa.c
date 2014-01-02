@@ -71,6 +71,7 @@
 
 #include "zfs_prop.h"
 #include "zfs_comutil.h"
+#include "osv/trace.h"
 
 /* Check hostid on import? */
 static int check_hostid = 1;
@@ -1751,11 +1752,13 @@ spa_load_verify_done(zio_t *zio)
 	int error = zio->io_error;
 
 	if (error) {
+		printf("zioerror %d %u\n", error, zio->id);
 		if ((BP_GET_LEVEL(bp) != 0 || DMU_OT_IS_METADATA(type)) &&
 		    type != DMU_OT_INTENT_LOG)
 			atomic_add_64(&sle->sle_meta_count, 1);
-		else
+		else {
 			atomic_add_64(&sle->sle_data_count, 1);
+		}
 	}
 	zio_data_buf_free(zio->io_data, zio->io_size);
 }
@@ -1769,7 +1772,6 @@ spa_load_verify_cb(spa_t *spa, zilog_t *zilog, const blkptr_t *bp,
 		zio_t *rio = arg;
 		size_t size = BP_GET_PSIZE(bp);
 		void *data = zio_data_buf_alloc(size);
-
 		zio_nowait(zio_read(rio, spa, bp, data, size,
 		    spa_load_verify_done, rio->io_private, ZIO_PRIORITY_SCRUB,
 		    ZIO_FLAG_SPECULATIVE | ZIO_FLAG_CANFAIL |
@@ -1795,6 +1797,8 @@ spa_load_verify(spa_t *spa)
 	rio = zio_root(spa, NULL, &sle,
 	    ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE);
 
+	printf("Ver %d\n", spa->spa_verify_min_txg);
+
 	error = traverse_pool(spa, spa->spa_verify_min_txg,
 	    TRAVERSE_PRE | TRAVERSE_PREFETCH, spa_load_verify_cb, rio);
 
@@ -1803,6 +1807,9 @@ spa_load_verify(spa_t *spa)
 	spa->spa_load_meta_errors = sle.sle_meta_count;
 	spa->spa_load_data_errors = sle.sle_data_count;
 
+	printf("%d %d %u %u\n", sle.sle_meta_count, sle.sle_data_count, policy.zrp_maxmeta, policy.zrp_maxdata);
+	printf("%d err\n", error);
+
 	if (!error && sle.sle_meta_count <= policy.zrp_maxmeta &&
 	    sle.sle_data_count <= policy.zrp_maxdata) {
 		int64_t loss = 0;
@@ -1810,6 +1817,8 @@ spa_load_verify(spa_t *spa)
 		verify_ok = B_TRUE;
 		spa->spa_load_txg = spa->spa_uberblock.ub_txg;
 		spa->spa_load_txg_ts = spa->spa_uberblock.ub_timestamp;
+
+		printf("load txg %d\n", spa->spa_load_txg);
 
 		loss = spa->spa_last_ubsync_txg_ts - spa->spa_load_txg_ts;
 		VERIFY(nvlist_add_uint64(spa->spa_load_info,

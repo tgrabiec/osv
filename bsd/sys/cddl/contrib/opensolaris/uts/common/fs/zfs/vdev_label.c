@@ -905,6 +905,7 @@ vdev_uberblock_load_done(zio_t *zio)
 
 	if (zio->io_error == 0 && uberblock_verify(ub) == 0) {
 		mutex_enter(&rio->io_lock);
+		printf("ub %u %u %u\n", ub->ub_txg, ub->ub_timestamp, zio->io_offset);
 		if (ub->ub_txg <= spa->spa_load_max_txg &&
 		    vdev_uberblock_compare(ub, cbp->ubl_ubbest) > 0) {
 			/*
@@ -1175,6 +1176,8 @@ vdev_label_sync_list(spa_t *spa, int l, uint64_t txg, int flags)
 		zio_flush(zio, vd);
 
 	(void) zio_wait(zio);
+
+	printf("synced %d\n", txg);
 
 	return (error);
 }

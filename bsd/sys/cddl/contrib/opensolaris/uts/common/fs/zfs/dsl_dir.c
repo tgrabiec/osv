@@ -778,7 +778,7 @@ dsl_dir_tempreserve_impl(dsl_dir_t *dd, uint64_t asize, boolean_t netfree,
 		if (est_inflight > 0 || used_on_disk < quota ||
 		    (retval == ENOSPC && used_on_disk < quota + deferred))
 			retval = ERESTART;
-		dprintf_dd(dd, "failing: used=%lluK inflight = %lluK "
+		printf("failing: used=%lluK inflight = %lluK "
 		    "quota=%lluK tr=%lluK err=%d\n",
 		    used_on_disk>>10, est_inflight>>10,
 		    quota>>10, asize>>10, retval);

@@ -215,11 +215,15 @@ zio_checksum_error(zio_t *zio, zio_bad_cksum_t *info)
 				nused = zilc->zc_nused;
 			else if (eck->zec_magic == BSWAP_64(ZEC_MAGIC))
 				nused = BSWAP_64(zilc->zc_nused);
-			else
+			else {
+				printf("%llx but %llx\n", ZEC_MAGIC, eck->zec_magic);
 				return (ECKSUM);
+			}
 
-			if (nused > size)
+			if (nused > size) {
+				printf("B\n");
 				return (ECKSUM);
+			}
 
 			size = P2ROUNDUP_TYPED(nused, ZIL_MIN_BLKSZ, uint64_t);
 		} else {
@@ -260,13 +264,16 @@ zio_checksum_error(zio_t *zio, zio_bad_cksum_t *info)
 	info->zbc_injected = 0;
 	info->zbc_has_cksum = 1;
 
-	if (!ZIO_CHECKSUM_EQUAL(actual_cksum, expected_cksum))
+	if (!ZIO_CHECKSUM_EQUAL(actual_cksum, expected_cksum)) {
+		printf("C\n");
 		return (ECKSUM);
+	}
 
 	if (zio_injection_enabled && !zio->io_error &&
 	    (error = zio_handle_fault_injection(zio, ECKSUM)) != 0) {
 
 		info->zbc_injected = 1;
+		printf("D\n");
 		return (error);
 	}
 

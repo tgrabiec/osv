@@ -67,6 +67,7 @@
 #include <sys/extdirent.h>
 #include <sys/kidmap.h>
 #include <sys/acl.h>
+#include <osv/trace.h>
 
 /*
  * Programming rules.
@@ -756,6 +757,7 @@ again:
 		    zfs_owner_overquota(zfsvfs, zp, B_TRUE)) {
 			if (abuf != NULL)
 				dmu_return_arcbuf(abuf);
+			__trace_sth();
 			error = EDQUOT;
 			break;
 		}
@@ -1247,6 +1249,7 @@ top:
 
 	if (zfs_acl_ids_overquota(zfsvfs, &acl_ids)) {
 		zfs_acl_ids_free(&acl_ids);
+		__trace_sth();
 		error = EDQUOT;
 		goto out;
 	}
@@ -1537,6 +1540,7 @@ top:
 		zfs_acl_ids_free(&acl_ids);
 		zfs_dirent_unlock(dl);
 		ZFS_EXIT(zfsvfs);
+		__trace_sth();
 		return (EDQUOT);
 	}
 
@@ -2318,6 +2322,7 @@ top:
 			    zfs_fuid_overquota(zfsvfs, B_FALSE, new_uid)) {
 				if (attrzp)
 					VN_RELE(ZTOV(attrzp));
+				__trace_sth();
 				err = EDQUOT;
 				goto out2;
 			}
@@ -2330,6 +2335,7 @@ top:
 			    zfs_fuid_overquota(zfsvfs, B_TRUE, new_gid)) {
 				if (attrzp)
 					VN_RELE(ZTOV(attrzp));
+				__trace_sth();
 				err = EDQUOT;
 				goto out2;
 			}
@@ -3211,6 +3217,7 @@ top:
 		zfs_acl_ids_free(&acl_ids);
 		zfs_dirent_unlock(dl);
 		ZFS_EXIT(zfsvfs);
+		__trace_sth();
 		return (EDQUOT);
 	}
 	tx = dmu_tx_create(zfsvfs->z_os);
@@ -3540,6 +3547,7 @@ zfs_putapage(vnode_t *vp, page_t *pp, u_offset_t *offp,
 
 	if (zfs_owner_overquota(zfsvfs, zp, B_FALSE) ||
 	    zfs_owner_overquota(zfsvfs, zp, B_TRUE)) {
+		__trace_sth();
 		err = EDQUOT;
 		goto out;
 	}

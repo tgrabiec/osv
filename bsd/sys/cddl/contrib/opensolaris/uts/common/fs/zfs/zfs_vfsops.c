@@ -1541,7 +1541,9 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 	 * threads are blocked as zil_close can call zfs_inactive.
 	 */
 	if (zfsvfs->z_log) {
+		printf("**** closing zil ****\n");
 		zil_close(zfsvfs->z_log);
+		printf("**** zil closed ****\n");
 		zfsvfs->z_log = NULL;
 	}
 
