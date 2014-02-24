@@ -60,6 +60,9 @@ def set_imgargs(options):
     if options.trace_backtrace:
         execute = '--trace-backtrace ' + execute
 
+    if options.sampler:
+        execute = '--trace=sampler_tick --trace-backtrace --sampler=%d %s' % (int(options.sampler), execute)
+
     cmdline = ["scripts/imgedit.py", "setargs", options.image_file, execute]
     if options.dry_run:
         print(format_args(cmdline))
@@ -351,7 +354,9 @@ if (__name__ == "__main__"):
     parser.add_argument("--trace", action="store",
                         help="enable tracepoint")
     parser.add_argument("--trace-backtrace", action="store_true",
-                        help="enable collecting of backtrace at tracepoints")
+                        help="enable collecting of backtrace at tracepoint")
+    parser.add_argument("--sampler", action="store",
+                        help="start sampling profiler at given frequency in Hz")
     cmdargs = parser.parse_args()
     cmdargs.opt_path = "debug" if cmdargs.debug else "release"
     cmdargs.image_file = os.path.abspath(cmdargs.image or "build/%s/usr.img" % cmdargs.opt_path)
