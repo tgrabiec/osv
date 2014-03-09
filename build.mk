@@ -246,6 +246,7 @@ tests += tests/tst-hello.so
 tests += tests/tst-concurrent-init.so
 tests += tests/tst-ring-spsc-wraparound.so
 tests += tests/tst-shm.so
+tests += tests/misc-callout-perf.so
 
 tests/hello/Hello.class: javabase=tests/hello
 

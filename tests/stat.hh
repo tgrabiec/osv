@@ -49,3 +49,42 @@ public:
         _thread.join();
     }
 };
+
+template<typename Clock = std::chrono::high_resolution_clock>
+class periodic {
+public:
+    using callback_t = std::function<void(typename Clock::duration)>;
+
+    periodic(typename Clock::duration period, callback_t callback)
+        : _period(period)
+        , _callback(callback)
+        , _thread([&]
+    {
+        auto last_stat_dump = Clock::now();
+        auto done_future = _done.get_future();
+        while (true) {
+            if (done_future.wait_until(last_stat_dump + _period) == std::future_status::ready) {
+                break;
+            }
+            auto _now = Clock::now();
+            auto duration = _now - last_stat_dump;
+            last_stat_dump = _now;
+            _callback(duration);
+        }
+    }) {}
+
+    ~periodic() {
+        stop();
+    }
+
+    void stop() {
+        _done.set_value(true);
+        _thread.join();
+    }
+
+private:
+    std::promise<bool> _done;
+    typename Clock::duration _period;
+    callback_t _callback;
+    std::thread _thread;
+};
