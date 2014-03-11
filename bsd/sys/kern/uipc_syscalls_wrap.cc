@@ -5,9 +5,12 @@
 
 #include <bsd/uipc_syscalls.h>
 #include <osv/debug.h>
+#include <osv/trace.hh>
 #include "libc/af_local.h"
 
 #include "libc/internal/libc.h"
+
+TIMED_TRACEPOINT(recv, "fd=%d", int);
 
 #define sock_d(...)		tprintf_d("socket-api", __VA_ARGS__);
 
@@ -159,6 +162,8 @@ ssize_t recv(int fd, void *buf, size_t len, int flags)
 {
 	int error;
 	ssize_t bytes;
+
+	time_recv{fd};
 
 	sock_d("recv(fd=%d, buf=<uninit>, len=%d, flags=0x%x)", fd, len, flags);
 

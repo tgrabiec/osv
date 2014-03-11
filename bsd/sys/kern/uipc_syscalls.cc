@@ -52,10 +52,13 @@
 #include <bsd/sys/sys/socket.h>
 #include <bsd/sys/sys/socketvar.h>
 #include <osv/uio.h>
+#include <osv/trace.hh>
 #include <bsd/sys/net/vnet.h>
 
 #include <memory>
 #include <fs/fs.hh>
+
+TIMED_TRACEPOINT(kern_recvit, "fd=%d", int);
 
 using namespace std;
 
@@ -571,6 +574,8 @@ kern_recvit(int s, struct msghdr *mp, struct mbuf **controlp, ssize_t* bytes)
 
 	if (controlp != NULL)
 		*controlp = NULL;
+
+	time_kern_recvit{s};
 
 	error = getsock_cap(s, &fp, NULL);
 	if (error)

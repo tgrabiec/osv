@@ -73,6 +73,10 @@
 #include <bsd/sys/netipsec/ipsec.h>
 #endif /*IPSEC*/
 
+#include <osv/trace.hh>
+
+TIMED_TRACEPOINT(tcp_output, "so=%x", struct socket*);
+
 #include <machine/in_cksum.h>
 
 VNET_DEFINE(int, path_mtu_discovery) = 1;
@@ -160,6 +164,8 @@ tcp_output(struct tcpcb *tp)
 
 	isipv6 = (tp->t_inpcb->inp_vflag & INP_IPV6) != 0;
 #endif
+
+	time_tcp_output{so};
 
 	INP_LOCK_ASSERT(tp->t_inpcb);
 

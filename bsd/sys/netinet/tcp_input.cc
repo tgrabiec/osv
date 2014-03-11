@@ -104,6 +104,9 @@
 
 #include <machine/in_cksum.h>
 #include <osv/poll.h>
+#include <osv/trace.hh>
+
+TIMED_TRACEPOINT(tcp_do_segment, "so=%x", struct socket*);
 
 const int tcprexmtthresh = 3;
 
@@ -1435,6 +1438,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	auto inp = tp->t_inpcb;
 
 	want_close = false;
+	time_tcp_do_segment{so};
 
 #ifdef TCPDEBUG
 	/*

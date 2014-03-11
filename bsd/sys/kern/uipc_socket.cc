@@ -125,6 +125,10 @@
 #include <bsd/sys/net/route.h>
 
 #include <bsd/sys/net/vnet.h>
+#include <osv/trace.hh>
+
+TIMED_TRACEPOINT(so_send, "so=%x", struct socket*);
+TIMED_TRACEPOINT(soreceive, "so=%x", struct socket*);
 
 #define uipc_d(...) tprintf_d("uipc_socket", __VA_ARGS__)
 
@@ -938,6 +942,8 @@ sosend_generic(struct socket *so, struct bsd_sockaddr *addr, struct uio *uio,
 	ssize_t resid;
 	int clen = 0, error, dontroute;
 	int atomic = sosendallatonce(so) || top;
+
+	time_so_send{so};
 
 	if (uio != NULL)
 		resid = uio->uio_resid;
@@ -2009,6 +2015,8 @@ soreceive(struct socket *so, struct bsd_sockaddr **psa, struct uio *uio,
     struct mbuf **mp0, struct mbuf **controlp, int *flagsp)
 {
 	int error;
+
+	time_soreceive{so};
 
 	CURVNET_SET(so->so_vnet);
 	error = (so->so_proto->pr_usrreqs->pru_soreceive(so, psa, uio, mp0,
