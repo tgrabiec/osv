@@ -241,6 +241,16 @@ class block_tracepoint_collector(object):
     def __contains__(self, tp):
         return tp.name in self.block_tracepoints
 
+use_data_arg = [
+    'tcp_output', 'tcp_output_ret',
+    'tcp_do_segment', 'tcp_do_segment_ret'
+]
+
+def get_corelation_id(trace):
+    if trace.name in use_data_arg:
+        return trace.data[0]
+    return trace.thread
+
 class timed_trace_producer(object):
     def __init__(self):
         self.block_tracepoints = block_tracepoint_collector()
@@ -252,14 +262,16 @@ class timed_trace_producer(object):
         name = t.name
         ended = get_name_of_ended_func(name)
         if ended:
-            if ended in self.open_functions[t.thread]:
-                timed = self.open_functions[t.thread].pop(ended)
+            corelation_id = get_corelation_id(t)
+            if ended in self.open_functions[corelation_id]:
+                timed = self.open_functions[corelation_id].pop(ended)
                 timed.duration = t.time - timed.trace.time
                 return timed
         elif t.tp in self.block_tracepoints:
-            if name in self.open_functions[t.thread]:
+            corelation_id = get_corelation_id(t)
+            if name in self.open_functions[corelation_id]:
                 raise Exception("Nested traces not supported: " + name)
-            self.open_functions[t.thread][name] = trace.TimedTrace(t)
+            self.open_functions[corelation_id][name] = trace.TimedTrace(t)
 
 def get_timed_traces(traces, time_range):
     producer = timed_trace_producer()
