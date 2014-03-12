@@ -419,5 +419,21 @@ static inline const char *trace_strip_prefix(const char *name)
 #define TRACEPOINTV(name, fmt, assign) \
     tracepointv<__COUNTER__, decltype(assign), assign> name(trace_strip_prefix(#name), fmt);
 
+#define TIMED_TRACEPOINT(name, fmt, arg_type)           \
+    TRACEPOINT(trace_ ## name, fmt, arg_type);          \
+    TRACEPOINT(trace_ ## name ## _ret, fmt, arg_type);  \
+                                                        \
+    class time_ ## name {                               \
+    private:                                            \
+        arg_type _arg;                                  \
+    public:                                             \
+        time_ ## name(arg_type arg) : _arg(arg) {       \
+            trace_ ## name(arg);                        \
+        }                                               \
+                                                        \
+        ~time_ ## name() {                              \
+            trace_ ## name ## _ret(_arg);               \
+        }                                               \
+    };
 
 #endif /* TRACE_HH_ */
