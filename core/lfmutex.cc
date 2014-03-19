@@ -14,7 +14,7 @@ namespace lockfree {
 
 TRACEPOINT(trace_mutex_lock, "%p", mutex *);
 TRACEPOINT(trace_mutex_lock_wait, "%p", mutex *);
-TRACEPOINT(trace_mutex_lock_wake, "%p", mutex *);
+TRACEPOINT(trace_mutex_lock_wait_ret, "%p", mutex *);
 TRACEPOINT(trace_mutex_try_lock, "%p, success=%d", mutex *, bool);
 TRACEPOINT(trace_mutex_unlock, "%p", mutex *);
 TRACEPOINT(trace_mutex_send_lock, "%p, wr=%p", mutex *, wait_record *);
@@ -86,7 +86,7 @@ void mutex::lock()
     // Wait until another thread pops us from the wait queue and wakes us up.
     trace_mutex_lock_wait(this);
     waiter.wait();
-    trace_mutex_lock_wake(this);
+    trace_mutex_lock_wait_ret(this);
     owner.store(current, std::memory_order_relaxed);
     depth = 1;
 }
