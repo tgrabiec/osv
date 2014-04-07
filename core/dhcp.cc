@@ -44,6 +44,32 @@ u8 requested_options[] = {
     dhcp::DHCP_OPTION_BROADCAST_ADDRESS
 };
 
+static void mbuf_dump(struct mbuf* m)
+{
+    int bytes_per_line = 8;
+    int i = 0;
+    int offset = 0;
+    printf("=== packet ===\n");
+    for (char c : m->M_dat.M_databuf) {
+        if (i == 0) {
+            printf("%3d: ", offset);
+        }
+
+        printf("%02x ", (unsigned char) c);
+
+        i++;
+        offset++;
+
+        if (i == bytes_per_line) {
+            i = 0;
+            printf("\n");
+        }
+    }
+    if (i) {
+        printf("\n");
+    }
+}
+
 // Returns whether we hooked the packet
 int dhcp_hook_rx(struct mbuf* m)
 {
@@ -85,6 +111,9 @@ namespace dhcp {
 
         // Transmit the packet directly over Ethernet
         int c = _ifp->if_output(_ifp, packet.get(), &dst, NULL);
+
+        printf("==== DHCP send ====\n");
+        mbuf_dump(packet.get());
 
         return (c == 0);
     }
@@ -624,6 +653,9 @@ namespace dhcp {
                 dhcp_e("Couldn't find interface state for DHCP packet!");
                 abort();
             }
+
+            printf("==== DHCP recv ====\n");
+            mbuf_dump(m);
 
             it->second->process_packet(m);
 
