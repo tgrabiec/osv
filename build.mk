@@ -460,6 +460,13 @@ bsd += bsd/sys/netinet/cc/cc_newreno.o
 bsd += bsd/sys/xdr/xdr.o
 bsd += bsd/sys/xdr/xdr_array.o
 bsd += bsd/sys/xdr/xdr_mem.o
+bsd += bsd/sys/crypto/rijndael/rijndael-api-fst.o
+bsd += bsd/sys/crypto/rijndael/rijndael-alg-fst.o
+bsd += bsd/sys/dev/random/yarrow.o
+bsd += bsd/sys/dev/random/randomdev_soft.o
+bsd += bsd/sys/dev/random/hash.o
+
+bsd/sys/crypto/rijndael/rijndael-api-fst.o: CFLAGS += -fno-strict-aliasing
 
 ifeq ($(arch),x64)
 bsd/%.o: COMMON += -DXEN -DXENHVM
