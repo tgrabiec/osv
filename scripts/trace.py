@@ -12,6 +12,10 @@ from operator import attrgetter
 
 from osv import trace, debug, prof
 
+scripts_dir = os.path.dirname(sys.argv[0])
+sys.path.append(os.path.join(scripts_dir, 'packages', 'dpkt-1.8.zip'))
+import dpkt
+
 class InvalidArgumentsException(Exception):
     def __init__(self, message):
         self.message = message
@@ -230,15 +234,6 @@ def extract(args):
 def prof_wait(args):
     show_profile(args, get_wait_profile)
 
-
-def needs_dpkt():
-    global dpkt
-    try:
-        import dpkt
-    except ImportError:
-        raise Exception("""Cannot import dpkt. If you don't have it installed you can get it from
-             https://code.google.com/p/dpkt/downloads""")
-
 def write_sample_to_pcap(sample, pcap_writer):
     ts = sample.time / 1e9
     if sample.name == "net_packet_eth":
@@ -252,7 +247,6 @@ def write_sample_to_pcap(sample, pcap_writer):
 
 def format_packet_sample(sample):
     assert(is_net_packet_sample(sample))
-    needs_dpkt()
     proc = subprocess.Popen(['tcpdump', '-nn', '-t', '-r', '-'], stdin=subprocess.PIPE,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     pcap = dpkt.pcap.Writer(proc.stdin)
@@ -267,8 +261,6 @@ def is_net_packet_sample(sample):
     return sample.name in ["net_packet_eth", "net_packet_loopback"]
 
 def pcap_dump(args, target=None):
-    needs_dpkt()
-
     if not target:
         target = sys.stdout
 
