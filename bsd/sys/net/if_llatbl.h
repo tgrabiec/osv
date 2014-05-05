@@ -33,6 +33,9 @@
 #include <bsd/porting/rwlock.h>
 
 #include <bsd/sys/netinet/in.h>
+#include <bsd/sys/netinet/tcp_timer.h>
+
+#include <osv/async.hh>
 
 struct ifnet;
 struct sysctl_req;
@@ -81,8 +84,8 @@ struct llentry {
 
 	/* XXX af-private? */
 	union {
-		struct callout	ln_timer_ch;
-		struct callout  la_timer;
+		serial_timer_task* ln_timer_ch;
+		serial_timer_task* la_timer;
 	} lle_timer;
 	/* NB: struct bsd_sockaddr must immediately follow */
 };

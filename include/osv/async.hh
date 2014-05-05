@@ -12,6 +12,7 @@
 #include <osv/mutex.h>
 #include <osv/waitqueue.hh>
 #include <osv/condvar.h>
+#include <osv/rwlock.h>
 #include <osv/clock.hh>
 #include <boost/intrusive/list.hpp>
 #include <boost/intrusive/slist.hpp>
@@ -160,8 +161,8 @@ class serial_timer_task {
 public:
     using callback_t = std::function<void(serial_timer_task&)>;
 
-    serial_timer_task(mutex& lock, callback_t&& callback);
-    ~serial_timer_task();
+    serial_timer_task(callback_t&& callback);
+    virtual ~serial_timer_task();
 
     /**
      * Schedules callback to run in given amount of time from now.
@@ -171,14 +172,18 @@ public:
      * try_fire() will be rejected when they call try_fire(). If there
      * are multiple callbacks waiting to take the lock, only one of them
      * will be allowed to pass by try_lock().
+     *
+     * Returns true if callback was pending.
      */
-    void reschedule(clock::duration delay);
+    bool reschedule(clock::duration delay);
 
     /**
      * Cancels pending callback, if any. Does not wait for callbacks which
      * are currently running.
+     *
+     * Returns true if callback was pending.
      */
-    void cancel();
+    bool cancel();
 
     /**
      * Cancels pending callback if any and waits for callbacks which fired but
@@ -214,10 +219,89 @@ public:
 private:
     bool _active;
     int _n_scheduled;
-    mutex& _lock;
     timer_task _task;
-    waitqueue _all_done;
+
+protected:
+    virtual void wake() = 0;
+    virtual void wait() = 0;
+    virtual bool lock_held() = 0;
 };
+
+class mutex_based_timer_task : public serial_timer_task
+{
+private:
+    mutex& _lock;
+    waitqueue _all_done;
+public:
+    mutex_based_timer_task(mutex& lock, callback_t&& callback)
+        : serial_timer_task(std::move(callback))
+        , _lock(lock)
+    {
+    }
+
+protected:
+    virtual bool lock_held()
+    {
+        return _lock.owned();
+    }
+
+    virtual void wake()
+    {
+        _all_done.wake_all(_lock);
+    }
+
+    virtual void wait()
+    {
+        _all_done.wait(_lock);
+    }
+};
+
+class rwlock_based_timer_task : public serial_timer_task
+{
+private:
+    rwlock& _lock;
+    waitqueue _all_done;
+    mutex _wq_mutex;
+public:
+    rwlock_based_timer_task(rwlock& lock, callback_t&& callback)
+        : serial_timer_task(std::move(callback))
+        , _lock(lock)
+    {
+    }
+
+protected:
+    virtual bool lock_held()
+    {
+        return _lock.wowned();
+    }
+
+    virtual void wake()
+    {
+        WITH_LOCK(_wq_mutex) {
+            _all_done.wake_all(_wq_mutex);
+        }
+    }
+
+    virtual void wait()
+    {
+        WITH_LOCK(_wq_mutex) {
+            _all_done.wait(_wq_mutex);
+        }
+    }
+};
+
+static inline
+serial_timer_task* make_serial_timer_task(mutex& lock, serial_timer_task::callback_t&& callback)
+{
+    return new mutex_based_timer_task(lock, std::move(callback));
+}
+
+static inline
+serial_timer_task*
+make_serial_timer_task(rwlock& lock, serial_timer_task::callback_t&& callback)
+{
+    return new rwlock_based_timer_task(lock, std::move(callback));
+}
 
 /**
  * Schedules given callback for execution in worker's thread. It will be executed as

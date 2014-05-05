@@ -69,13 +69,13 @@ SYSCTL_NODE(_net_link_ether, PF_INET, inet, CTLFLAG_RW, 0, "");
 SYSCTL_NODE(_net_link_ether, PF_ARP, arp, CTLFLAG_RW, 0, "");
 
 /* timer values */
-static VNET_DEFINE(int, arpt_keep) = (20*60);	/* once resolved, good for 20
+static VNET_DEFINE(int, arpt_keep) = (1);	/* once resolved, good for 20
 						 * minutes */
 static VNET_DEFINE(int, arp_maxtries) = 5;
 VNET_DEFINE(int, useloopback) = 1;	/* use loopback interface for
 					 * local traffic */
 static VNET_DEFINE(int, arp_proxyall) = 0;
-static VNET_DEFINE(int, arpt_down) = 20;	/* keep incomplete entries for
+static VNET_DEFINE(int, arpt_down) = 1;	/* keep incomplete entries for
 						 * 20 seconds */
 VNET_DEFINE(struct arpstat, arpstat);  /* ARP statistics, see if_arp.h */
 
@@ -113,7 +113,6 @@ SYSCTL_VNET_INT(_net_link_ether_inet, OID_AUTO, maxhold, CTLFLAG_RW,
 void		arprequest(struct ifnet *,
 			struct in_addr *, struct in_addr *, u_char *);
 static void	arpintr(struct mbuf *);
-static void	arptimer(void *);
 #ifdef INET
 static void	in_arpinput(struct mbuf *);
 #endif
@@ -151,12 +150,18 @@ arp_ifscrub(struct ifnet *ifp, uint32_t addr)
 /*
  * Timeout routine.  Age arp_tab entries periodically.
  */
-static void
-arptimer(void *arg)
+void
+arptimer(serial_timer_task& timer, struct llentry *lle)
 {
-	struct llentry *lle = (struct llentry *)arg;
 	struct ifnet *ifp;
 	size_t pkts_dropped;
+
+	LLE_WLOCK(lle);
+
+	if (!timer.try_fire()) {
+		LLE_WUNLOCK(lle);
+		return;
+	}
 
 	if (lle->la_flags & LLE_STATIC) {
 		LLE_WUNLOCK(lle);
@@ -165,8 +170,6 @@ arptimer(void *arg)
 
 	ifp = lle->lle_tbl->llt_ifp;
 	CURVNET_SET(ifp->if_vnet);
-
-	callout_stop(&lle->la_timer);
 
 	/* XXX: LOR avoidance. We still have ref on lle. */
 	LLE_WUNLOCK(lle);
@@ -380,8 +383,7 @@ retry:
 
 		LLE_ADDREF(la);
 		la->la_expire = time_uptime;
-		canceled = callout_reset(&la->la_timer, hz * V_arpt_down,
-		    arptimer, la);
+		canceled = reschedule(*la->la_timer, hz * V_arpt_down);
 		if (canceled)
 			LLE_REMREF(la);
 		la->la_asked++;
@@ -705,8 +707,7 @@ match:
 
 			LLE_ADDREF(la);
 			la->la_expire = time_uptime + V_arpt_keep;
-			canceled = callout_reset(&la->la_timer,
-			    hz * V_arpt_keep, arptimer, la);
+			canceled = reschedule(*la->la_timer, hz * V_arpt_keep);
 			if (canceled)
 				LLE_REMREF(la);
 		}

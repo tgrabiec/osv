@@ -154,14 +154,6 @@ static void _callout_thread(void)
 
         auto fn = c->c_fn;
         auto arg = c->c_arg;
-        struct mtx* c_mtx = c->c_mtx;
-        struct rwlock* c_rwlock = c->c_rwlock;
-        bool return_unlocked = ((c->c_flags & CALLOUT_RETURNUNLOCKED) == 0);
-
-        if (c_rwlock)
-            rw_wlock(c_rwlock);
-        if (c_mtx)
-            mtx_lock(c_mtx);
 
         c->c_flags &= ~CALLOUT_PENDING;
 
@@ -193,14 +185,6 @@ static void _callout_thread(void)
                 c->c_flags |= CALLOUT_COMPLETED;
                 callouts::remove_callout(c);
             }
-        }
-
-        // FIXME: should we do this in case the caller called callout_stop?
-        if (return_unlocked) {
-            if (c_rwlock)
-                rw_wunlock(c_rwlock);
-            if (c_mtx)
-                mtx_unlock(c_mtx);
         }
 
         // if we have a waiter then the callout structure must be valid
@@ -300,24 +284,6 @@ void callout_init(struct callout *c, int mpsafe)
     assert(mpsafe != 0);
 
     trace_callout_init(c);
-}
-
-void callout_init_rw(struct callout *c, struct rwlock *rw, int flags)
-{
-    assert(rw != NULL);
-
-    callout_init(c, 1);
-    c->c_rwlock = rw;
-    c->c_flags = flags;
-}
-
-void callout_init_mtx(struct callout *c, struct mtx *mtx, int flags)
-{
-    assert(mtx != NULL);
-
-    callout_init(c, 1);
-    c->c_mtx = mtx;
-    c->c_flags = flags;
 }
 
 void init_callouts(void)

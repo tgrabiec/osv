@@ -58,8 +58,6 @@ struct lock_object;
 #define	callout_deactivate(c)	((c)->c_flags &= ~CALLOUT_ACTIVE)
 #define	callout_drain(c)	_callout_stop_safe(c, 1)
 void	callout_init(struct callout *, int);
-void callout_init_mtx(struct callout *c, struct mtx *lock, int flags);
-void callout_init_rw(struct callout *c, struct rwlock *rw, int flags);
 #define	callout_pending(c)	((c)->c_flags & CALLOUT_PENDING)
 #define callout_completed(c)  ((c)->c_flags & CALLOUT_COMPLETED)
 int	callout_reset_on(struct callout *, u64, void (*)(void *), void *, int);

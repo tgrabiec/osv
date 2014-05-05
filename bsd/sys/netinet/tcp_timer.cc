@@ -598,19 +598,19 @@ init_timers(struct tcp_timer* timers, struct tcpcb *tp, struct inpcb *inp)
 	using namespace std::placeholders;
 
 	timers->timers[tcp_timer_type::TT_DELACK] =
-		new serial_timer_task(inp->inp_lock, std::bind(tcp_timer_delack, _1, tp));
+		make_serial_timer_task(inp->inp_lock, std::bind(tcp_timer_delack, _1, tp));
 
 	timers->timers[tcp_timer_type::TT_REXMT] =
-		new serial_timer_task(inp->inp_lock, std::bind(tcp_timer_rexmt, _1, tp));
+		make_serial_timer_task(inp->inp_lock, std::bind(tcp_timer_rexmt, _1, tp));
 
 	timers->timers[tcp_timer_type::TT_PERSIST] =
-		new serial_timer_task(inp->inp_lock, std::bind(tcp_timer_persist, _1, tp));
+		make_serial_timer_task(inp->inp_lock, std::bind(tcp_timer_persist, _1, tp));
 
 	timers->timers[tcp_timer_type::TT_KEEP] =
-		new serial_timer_task(inp->inp_lock, std::bind(tcp_timer_keep, _1, tp));
+		make_serial_timer_task(inp->inp_lock, std::bind(tcp_timer_keep, _1, tp));
 
 	timers->timers[tcp_timer_type::TT_2MSL] =
-		new serial_timer_task(inp->inp_lock, std::bind(tcp_timer_2msl, _1, tp));
+		make_serial_timer_task(inp->inp_lock, std::bind(tcp_timer_2msl, _1, tp));
 }
 
 serial_timer_task&

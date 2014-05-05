@@ -142,6 +142,7 @@ void test2(void)
      * With Mutex *
      ************/
 
+#if 0
     t2_reset();
     callout_init_mtx(&t2a_mtx, &t2_lock, 1);
     callout_reset(&t2a_mtx, hz/4000, t2_a2, NULL);
@@ -156,6 +157,7 @@ void test2(void)
     /* Run test without mutex (unsynchronized access) */
     tdbg("With Mutex:\n");
     t2_print();
+#endif
 
     tdbg("BSD Callout Test2 - END\n");
 }

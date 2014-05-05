@@ -58,6 +58,8 @@
 #include <bsd/sys/netinet/udp.h>
 #include <bsd/sys/netinet/udp_var.h>
 
+#include <functional>
+
 static int in_mask2len(struct in_addr *);
 static void in_len2mask(struct in_addr *, int);
 static int in_lifaddr_ioctl(struct socket *, u_long, caddr_t,
@@ -1318,8 +1320,12 @@ static void
 in_lltable_free(struct lltable *llt, struct llentry *lle)
 {
 	LLE_WUNLOCK(lle);
-	LLE_LOCK_DESTROY(lle);
-	free(lle);
+	asyn::run_later([=] {
+		llt->la_timer->cancel_sync();
+		delete llt->la_timer;
+		LLE_LOCK_DESTROY(lle);
+		free(lle);
+	});
 }
 
 static struct llentry *
@@ -1342,8 +1348,9 @@ in_lltable_new(const struct bsd_sockaddr *l3addr, u_int flags)
 	lle->base.lle_refcnt = 1;
 	lle->base.lle_free = in_lltable_free;
 	LLE_LOCK_INIT(&lle->base);
-	callout_init_rw(&lle->base.la_timer, &lle->base.lle_lock,
-	    CALLOUT_RETURNUNLOCKED);
+
+	lle->base.la_timer = make_serial_timer_task(lle->base.lle_lock,
+		std::bind(arptimer, std::placeholders::_1, &lle->base));
 
 	return (&lle->base);
 }
@@ -1372,7 +1379,7 @@ in_lltable_prefix_free(struct lltable *llt, const struct bsd_sockaddr *prefix,
 			    pfx, msk) && ((flags & LLE_STATIC) ||
 			    !(lle->la_flags & LLE_STATIC))) {
 				LLE_WLOCK(lle);
-				if (callout_stop(&lle->la_timer))
+				if (lle->la_timer->cancel())
 					LLE_REMREF(lle);
 				pkts_dropped = llentry_free(lle);
 				ARPSTAT_ADD(dropped, pkts_dropped);

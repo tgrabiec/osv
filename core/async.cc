@@ -383,10 +383,9 @@ bool timer_task::is_pending()
     }
 }
 
-serial_timer_task::serial_timer_task(mutex& lock, callback_t&& callback)
+serial_timer_task::serial_timer_task(callback_t&& callback)
     : _active(false)
     , _n_scheduled(0)
-    , _lock(lock)
     , _task(std::bind(std::move(callback), std::ref(*this)))
 {
 }
@@ -396,36 +395,42 @@ serial_timer_task::~serial_timer_task()
     assert(_n_scheduled == 0);
 }
 
-void serial_timer_task::reschedule(clock::duration delay)
+bool serial_timer_task::reschedule(clock::duration delay)
 {
-    assert(_lock.owned());
+    assert(lock_held());
 
-    if (_task.reschedule(delay)) {
+    bool was_pending = _task.reschedule(delay);
+
+    if (was_pending) {
         _n_scheduled--;
     }
 
     _n_scheduled++;
     _active = true;
+    return was_pending;
 }
 
-void serial_timer_task::cancel()
+bool serial_timer_task::cancel()
 {
-    assert(_lock.owned());
+    assert(lock_held());
 
     _active = false;
     if (_task.cancel()) {
         _n_scheduled--;
+        return true;
     }
+
+    return false;
 }
 
 void serial_timer_task::cancel_sync()
 {
-    assert(_lock.owned());
+    assert(lock_held());
 
     cancel();
 
     if (_n_scheduled) {
-        _all_done.wait(_lock);
+        wait();
     }
 
     assert(_n_scheduled == 0);
@@ -433,22 +438,22 @@ void serial_timer_task::cancel_sync()
 
 bool serial_timer_task::is_active()
 {
-    assert(_lock.owned());
+    assert(lock_held());
     return _active;
 }
 
 bool serial_timer_task::can_fire()
 {
-    assert(_lock.owned());
+    assert(lock_held());
     return !_task.is_pending() && _active;
 }
 
 bool serial_timer_task::try_fire()
 {
-    assert(_lock.owned());
+    assert(lock_held());
 
     if (--_n_scheduled == 0) {
-        _all_done.wake_all(_lock);
+        wake();
     }
 
     if (!can_fire()) {

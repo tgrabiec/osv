@@ -37,10 +37,12 @@
 
 #include <bsd/sys/net/ethernet.h>
 #include <bsd/sys/net/if_arp.h>
+#include <bsd/sys/net/if_llatbl.h>
 
 __BEGIN_DECLS
 void    arp_init(void);
 
+void arptimer(serial_timer_task& timer, struct llentry *lle);
 
 /*
  * Macro to map an IP multicast address to an Ethernet multicast address.

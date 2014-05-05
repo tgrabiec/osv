@@ -174,9 +174,9 @@ async::clock::duration ticks_to_duration(ticks_t ticks)
 }
 
 static inline
-void reschedule(serial_timer_task& timer, ticks_t delay)
+bool reschedule(serial_timer_task& timer, ticks_t delay)
 {
-	timer.reschedule(ticks_to_duration(delay));
+	return timer.reschedule(ticks_to_duration(delay));
 }
 
 #define	TP_KEEPINIT(tp)	((tp)->t_keepinit ? (tp)->t_keepinit : tcp_keepinit)

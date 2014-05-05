@@ -171,7 +171,7 @@ lltable_free(struct lltable *llt)
 	for (i = 0; i < LLTBL_HASHTBL_SIZE; i++) {
 		LIST_FOREACH_SAFE(lle, &llt->lle_head[i], lle_next, next) {
 			LLE_WLOCK(lle);
-			if (callout_stop(&lle->la_timer))
+			if (lle->la_timer->cancel())
 				LLE_REMREF(lle);
 			llentry_free(lle);
 		}
