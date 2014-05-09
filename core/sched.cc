@@ -370,8 +370,11 @@ void cpu::idle()
     }
 }
 
+TRACEPOINT(trace_handle_incoming_wakeups, "");
+
 void cpu::handle_incoming_wakeups()
 {
+    trace_handle_incoming_wakeups();
     cpu_set queues_with_wakes{incoming_wakeups_mask.fetch_clear()};
     if (!queues_with_wakes) {
         return;
