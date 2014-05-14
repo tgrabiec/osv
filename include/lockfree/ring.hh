@@ -14,25 +14,26 @@
 #include <atomic>
 #include <osv/sched.hh>
 #include <arch.hh>
+#include <osv/ilog2.hh>
+#include <osv/debug.hh>
 
 //
 // spsc ring of fixed size
 //
-template<class T, unsigned MaxSize>
+template<class T, unsigned MaxSize, unsigned MaxSizeMask = MaxSize - 1>
 class ring_spsc {
 public:
-    ring_spsc(): _begin(0), _end(0) { }
+    ring_spsc(): _begin(0), _end(0) { assert(is_power_of_two(MaxSize)); }
 
     bool push(const T& element)
     {
         unsigned end = _end.load(std::memory_order_relaxed);
-        unsigned beg = _begin.load(std::memory_order_relaxed);
 
-        if (end - beg >= MaxSize) {
+        if (size() >= MaxSize) {
             return false;
         }
 
-        _ring[end % MaxSize] = element;
+        _ring[end & MaxSizeMask] = element;
         _end.store(end + 1, std::memory_order_release);
 
         return true;
@@ -41,19 +42,44 @@ public:
     bool pop(T& element)
     {
         unsigned beg = _begin.load(std::memory_order_relaxed);
-        unsigned end = _end.load(std::memory_order_acquire);
 
-        if (beg == end) {
+        if (empty()) {
             return false;
         }
 
-        element = _ring[beg % MaxSize];
+        element = _ring[beg & MaxSizeMask];
         _begin.store(beg + 1, std::memory_order_relaxed);
 
         return true;
     }
 
-    unsigned size() {
+    /**
+     * Checks if the ring is empty(). May be called by both producer and the
+     * consumer.
+     *
+     * @return TRUE if there are no elements
+     */
+    bool empty() const {
+        unsigned beg = _begin.load(std::memory_order_relaxed);
+        unsigned end = _end.load(std::memory_order_acquire);
+        return beg == end;
+    }
+
+    const T& front() const {
+        DEBUG_ASSERT(!empty(), "calling front() on an empty queue!");
+
+        unsigned beg = _begin.load(std::memory_order_relaxed);
+
+        return _ring[beg & MaxSizeMask];
+    }
+
+    /**
+     * Should be called by the producer. When called by the consumer may
+     * someties return a smaller value than the actual elements count.
+     *
+     * @return the current number of the elements.
+     */
+    unsigned size() const {
         unsigned end = _end.load(std::memory_order_relaxed);
         unsigned beg = _begin.load(std::memory_order_relaxed);
 

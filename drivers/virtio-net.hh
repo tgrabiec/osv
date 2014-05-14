@@ -13,16 +13,22 @@
 #include <bsd/sys/net/if.h>
 #include <bsd/sys/sys/mbuf.h>
 
+#include <osv/percpu_xmit.hh>
+
 #include "drivers/virtio.hh"
 #include "drivers/pci-device.hh"
+
 
 namespace virtio {
 
 /**
+ * @class net
  * virtio net device class
  */
 class net : public virtio_driver {
 public:
+
+    friend struct txq;
 
     // The feature bitmap for virtio net
     enum NetFeatures {
@@ -220,20 +226,6 @@ public:
 
     bool ack_irq();
 
-    /**
-     * Transmit a single mbuf.
-     * @param m_head a buffer to transmits
-     * @param flush kick() if TRUE
-     * @note should be called under the _tx_ring_lock.
-     *
-     * @return 0 in case of success and an appropriate error code
-     *         otherwise
-     */
-    int tx_locked(struct mbuf* m_head, bool flush = false);
-
-    struct mbuf* tx_offload(struct mbuf* m, struct net_hdr* hdr);
-    void kick(int queue) {_queues[queue]->kick();}
-    void tx_gc();
     static hw_driver* probe(hw_device* dev);
 
     /**
@@ -243,24 +235,32 @@ public:
      */
     void fill_stats(struct if_data* out_data) const;
 
-    // tx ring lock protects this ring for multiple access
-    mutex _tx_ring_lock;
-
+    /**
+     * Transmit a single frame.
+     *
+     * @note This function may sleep!
+     * @param buff frame to transmit
+     *
+     * @return 0 in case of success, EINVAL in case the frame is not
+     *         well-formed.
+     */
+    int xmit(mbuf* buff);
 private:
 
     struct net_req {
+        explicit net_req(mbuf *m) : mb(m) {
+            memset(&mhdr, 0, sizeof(mhdr));
+        }
+
         struct net::net_hdr_mrg_rxbuf mhdr;
-        struct free_deleter {
-            void operator()(struct mbuf* m) {m_freem(m);}
-        };
-
-        std::unique_ptr<struct mbuf, free_deleter> um;
-
-        net_req() {memset(&mhdr,0,sizeof(mhdr));};
+        mbuf* mb;
+        u64 tx_bytes;
     };
 
     std::string _driver_name;
     net_config _config;
+
+    // TODO: Consider moving all these to txq
     bool _mergeable_bufs;
     bool _tso_ecn = false;
     bool _status = false;
@@ -276,21 +276,26 @@ private:
     gsi_level_interrupt _gsi;
 
     struct rxq_stats {
-        u64 rx_packets; /* if_ipackets */
-        u64 rx_bytes;   /* if_ibytes */
-        u64 rx_drops;   /* if_iqdrops */
-        u64 rx_csum;    /* number of packets with correct csum */
-        u64 rx_csum_err;/* number of packets with a bad checksum */
+        u64 rx_packets;         // if_ipackets
+        u64 rx_bytes;           // if_ibytes
+        u64 rx_drops;           // if_iqdrops
+        u64 rx_csum;            // number of packets with correct csum
+        u64 rx_csum_err;        // number of packets with a bad checksum
     };
 
     struct txq_stats {
-        u64 tx_packets; /* if_opackets */
-        u64 tx_bytes;   /* if_obytes */
-        u64 tx_err;     /* Number of broken packets */
-        u64 tx_drops;   /* Number of dropped packets */
-        u64 tx_csum;    /* CSUM offload requests */
-        u64 tx_tso;     /* GSO/TSO packets */
-        /* u64 tx_rescheduled; */ /* TODO when we implement xoff */
+        u64 tx_packets;         // if_opackets
+        u64 tx_bytes;           // if_obytes
+        u64 tx_err;             // Number of broken packets
+        u64 tx_drops;           // Number of dropped packets
+        u64 tx_csum;            // CSUM offload requests
+        u64 tx_tso;             // GSO/TSO packets
+        u64 tx_kicks;           // Number of calls for vqueue->kick()
+        u64 tx_hv_kicks;        // Number of actual kicks to Hypervisor
+        u64 tx_pkts_from_disp;  // Number of packets handled in dispatcher
+
+        u64 tx_disp_wakeups;    // Number of times dispatcher woke on a new work
+                                // arrived
     };
 
      /* Single Rx queue object */
@@ -302,11 +307,182 @@ private:
         struct rxq_stats stats = { 0 };
     };
 
-    /* Single Tx queue object */
+    struct txq;
+    /**
+     * @class tx_xmit_iterator
+     *
+     * This iterator will be used as an output iterator by the nway_merger
+     * instance that will merge the per-CPU tx_cpu_queue instances.
+     *
+     * It's operator=() will actually sent the packet to the (virtual) HW.
+     */
+    class tx_xmit_iterator {
+    public:
+        tx_xmit_iterator(txq* txq) : _q(txq) { }
+
+        // These ones will do nothing
+        tx_xmit_iterator& operator *() { return *this; }
+        tx_xmit_iterator& operator++() { return *this; }
+
+        /**
+         * Push the packet downstream
+         * @param tx_desc
+         */
+        void operator=(void* cooky) {
+            _q->xmit_one_locked(cooky);
+        }
+    private:
+        txq* _q;
+    };
+
+    /**
+     * @class txq
+     * A single Tx queue object.
+     *
+     *  TODO: Make it a class!
+     */
     struct txq {
-        txq(vring* vq) : vqueue(vq) {};
+        friend class tx_xmit_iterator;
+
+        txq(net* parent, vring* vq) :
+            vqueue(vq), _parent(parent), _xmit_it(this),
+            _kick_thresh(vqueue->size()), _xmitter(this),
+            worker([this] {
+                // TODO: implement a proper StopPred when we fix a SP code
+                _xmitter.poll_until([] { return false; }, _xmit_it);
+            })
+        {
+            //
+            // Kick at least every full ring of packets (see _kick_thresh
+            // above).
+            //
+            // Othersize a deadlock is possible:
+            //    1) We post a full ring of buffers without a kick().
+            //    2) We block on posting of the next buffer.
+            //    3) HW doesn't know there is a work to do.
+            //    4) Dead lock.
+            //
+        };
+
+        /**
+         * Checks the packet and returns the net_req (returned in a "cooky")
+         * @param m_head
+         * @param cooky
+         *
+         * @return 0 if packet is ok and EINVAL if it's not well-formed.
+         */
+        int xmit_prep(mbuf* m_head, void*& cooky);
+
+        /**
+         * Try to transmit a single packet. Don't block on failure.
+         *
+         * Must run with "running" lock taken.
+         * In case of a success this function will update Tx statistics.
+         * @param m_head
+         * @param cooky Cooky returned by xmit_prep().
+         * @param tx_bytes
+         *
+         * @return 0 if packet has been successfully sent and ENOBUFS if there
+         *         was no room on a HW ring to send the packet.
+         */
+        int try_xmit_one_locked(void* cooky);
+
+        /**
+         * Kick the vqueue if number of pending packets has reached the given
+         * threshold.
+         *
+         * Currently we assume that this function is called only from the
+         * dispatcher and updates some corresponding statistics.
+         *
+         * If the above assumtion breaks, the implementation should be updated
+         * correspondingly.
+         * @param thresh threshold
+         */
+        void kick_pending(u16 thresh = 1);
+        void kick_pending_with_thresh() {
+            kick_pending(_kick_thresh);
+        }
+
+        /**
+         * Kick the underlying vring.
+         *
+         * @return TRUE if the vring has been actually indicated.
+         */
+        bool kick_hw();
+
+        /**
+         * Inform the Txq that there is a new pending work
+         */
+        void wake_worker();
+
+        int xmit(mbuf* m_head) { return _xmitter.xmit(m_head); }
+
+        /* TODO: drain the per-cpu rings in ~txq() and in if_qflush() */
+
         vring* vqueue;
         struct txq_stats stats = { 0 };
+
+    private:
+        /**
+         * This is a private version of try_xmit_one_locked() that acually does
+         * the work.
+         * This function won't update Tx statistics, the caller should do it
+         * after the packet is actually sent.
+         * @param m_head
+         * @param req
+         *
+         * @return 0 if packet has been successfully sent, EINVAL if a packet is
+         *         not well-formed and ENOBUFS if there was no room on a HW ring
+         *         to send the packet.
+         */
+        int try_xmit_one_locked(net_req* req);
+
+        /**
+         * Transmit a single packet. Will wait for completions if there is no
+         * room on a HW ring.
+         *
+         * Must run with "running" lock taken.
+         * @param req Tx request handle
+         */
+        void xmit_one_locked(void* req);
+
+        /**
+         * Free the descriptors for the completed packets.
+         */
+        void gc();
+
+        /**
+         * Update the packet handle and the net_hdr according to various offload
+         * features.
+         * @param m     Tx packet handle
+         * @param hdr   net_hdr to update
+         *
+         * @return The updated Tx packet handle. If packet wasn't well-formed
+         *         nullptr will be returned.
+         */
+        mbuf* offload(mbuf* m, net_hdr* hdr);
+
+        /**
+         * Update Tx stats for a single packet in case of a successful xmit.
+         * @param req Appropriate net_req for this packet (we need its mhdr)
+         */
+        void update_stats(net_req* req);
+
+        net* _parent;
+        tx_xmit_iterator _xmit_it;
+        const int _kick_thresh;
+        u16 _pkts_to_kick = 0;
+        //
+        // 4096 is the size of the buffers ring of the FreeBSD virtio-net
+        // driver. So, we are using this as a baseline. We may ajust this value
+        // later (cut it down maybe?!).
+        //
+        // Currently this gives us ~16 pages per one CPU ring.
+        //
+        osv::xmitter<txq, 4096> _xmitter;
+
+    public:
+        sched::thread worker;
     };
 
     /**
