@@ -115,6 +115,11 @@ def get_hit_profile(traces, filter=None):
         if trace.backtrace and (not filter or filter(trace)):
             yield ProfSample(trace.time, trace.cpu, trace.thread, trace.backtrace)
 
+def get_data_profile(traces, filter=None):
+    for trace in traces:
+        if trace.backtrace and (not filter or filter(trace)):
+            yield ProfSample(trace.time, trace.cpu, trace.thread, trace.backtrace, resident_time=trace.data[0])
+
 
 class TimedTraceMatcher(object):
     def is_entry_or_exit(self, sample):

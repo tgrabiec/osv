@@ -7,6 +7,7 @@
 
 #include <lockfree/mutex.hh>
 #include <osv/trace.hh>
+#include <osv/clock.hh>
 #include <osv/sched.hh>
 #include <osv/wait_record.hh>
 
@@ -19,10 +20,17 @@ TRACEPOINT(trace_mutex_try_lock, "%p, success=%d", mutex *, bool);
 TRACEPOINT(trace_mutex_unlock, "%p", mutex *);
 TRACEPOINT(trace_mutex_send_lock, "%p, wr=%p", mutex *, wait_record *);
 TRACEPOINT(trace_mutex_receive_lock, "%p", mutex *);
+TRACEPOINT(trace_lock_cost, "%u", u64);
 
 void mutex::lock()
 {
     trace_mutex_lock(this);
+
+    osv::clock::uptime::time_point _start;
+    auto logging = trace_lock_cost.is_logging();
+    if (logging) {
+        _start = osv::clock::uptime::now();
+    }
 
     sched::thread *current = sched::thread::current();
 
@@ -33,6 +41,9 @@ void mutex::lock()
         // just for implementing a recursive mutex.
         owner.store(current, std::memory_order_relaxed);
         depth = 1;
+        if (logging) {
+            trace_lock_cost((osv::clock::uptime::now() - _start).count());
+        }
         return;
     }
 
@@ -42,6 +53,9 @@ void mutex::lock()
     if (owner.load(std::memory_order_relaxed) == current) {
         count.fetch_add(-1, std::memory_order_relaxed);
         ++depth;
+        if (logging) {
+            trace_lock_cost((osv::clock::uptime::now() - _start).count());
+        }
         return;
     }
 
@@ -77,6 +91,9 @@ void mutex::lock()
                     assert(other == &waiter);
                     owner.store(current, std::memory_order_relaxed);
                     depth = 1;
+                    if (logging) {
+                        trace_lock_cost((osv::clock::uptime::now() - _start).count());
+                    }
                     return;
                 }
             }
@@ -89,6 +106,10 @@ void mutex::lock()
     trace_mutex_lock_wake(this);
     owner.store(current, std::memory_order_relaxed);
     depth = 1;
+    if (logging) {
+        trace_lock_cost((osv::clock::uptime::now() - _start).count());
+    }
+    return;
 }
 
 // send_lock() is used for implementing a "wait morphing" technique, where

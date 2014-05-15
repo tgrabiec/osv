@@ -199,6 +199,11 @@ void tracepoint_base::enable()
     update();
 }
 
+bool tracepoint_base::is_logging()
+{
+    return logging;
+}
+
 void tracepoint_base::update()
 {
     bool empty;

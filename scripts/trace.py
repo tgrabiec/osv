@@ -247,7 +247,7 @@ def prof_wait(args):
 
 def prof_lock(args):
     def get_profile(traces):
-        return prof.get_duration_profile(traces, sample_name_is("mutex_lock_wait"))
+        return prof.get_data_profile(traces, sample_name_is("lock_cost"))
     show_profile(args, get_profile)
 
 def needs_dpkt():

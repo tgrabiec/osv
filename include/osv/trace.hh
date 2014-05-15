@@ -273,6 +273,7 @@ public:
                              const char* _name, const char* _format);
     ~tracepoint_base();
     void enable();
+    bool is_logging();
     static bool log_backtraces(bool should_log = true);
     void add_probe(probe* p);
     void del_probe(probe* p);
