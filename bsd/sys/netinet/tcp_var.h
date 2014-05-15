@@ -532,7 +532,7 @@ struct	tcpstat {
  * In-kernel consumers can use these accessor macros directly to update
  * stats.
  */
-#define	TCPSTAT_ADD(name, val)	V_tcpstat.name += (val)
+#define	TCPSTAT_ADD(name, val)	do { /*V_tcpstat.name += (val)*/ } while (0)
 #define	TCPSTAT_INC(name)	TCPSTAT_ADD(name, 1)
 
 /*
