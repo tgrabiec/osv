@@ -255,8 +255,9 @@ static inline async_worker& get_worker()
     return **_percpu_worker;
 }
 
-timer_task::timer_task(callback_t&& callback)
+timer_task::timer_task(callback_t&& callback, mutex& lock)
     : _active_task(nullptr)
+    , _mutex(lock)
     , _callback(std::move(callback))
     , _terminating(false)
 {
@@ -264,7 +265,8 @@ timer_task::timer_task(callback_t&& callback)
 }
 
 timer_task::~timer_task() {
-    WITH_LOCK(_mutex) {
+    assert(_mutex.owned());
+    // WITH_LOCK(_mutex) {
         trace_async_timer_task_destroy(this);
 
         assert(!_terminating);
@@ -284,7 +286,7 @@ timer_task::~timer_task() {
         while (!_registrations.empty()) {
             _registrations_drained.wait(_mutex);
         }
-    }
+    // }
 }
 
 bool timer_task::reschedule(clock::duration delay)
@@ -294,7 +296,8 @@ bool timer_task::reschedule(clock::duration delay)
 
 bool timer_task::reschedule(clock::time_point time_point)
 {
-    WITH_LOCK(_mutex) {
+    assert(_mutex.owned());
+    // WITH_LOCK(_mutex) {
         assert(!_terminating);
 
         bool was_pending = cancel();
@@ -315,7 +318,7 @@ bool timer_task::reschedule(clock::time_point time_point)
         }
 
         return was_pending;
-    }
+    // }
 }
 
 void timer_task::free_registration(percpu_timer_task& task)
@@ -330,7 +333,8 @@ void timer_task::free_registration(percpu_timer_task& task)
 
 bool timer_task::cancel()
 {
-    WITH_LOCK(_mutex) {
+    assert(_mutex.owned());
+    // WITH_LOCK(_mutex) {
         trace_async_timer_task_cancel(this, _active_task);
         assert(!_terminating);
 
@@ -347,7 +351,7 @@ bool timer_task::cancel()
 
         _active_task = nullptr;
         return true;
-    }
+    // }
 }
 
 void timer_task::fire(percpu_timer_task& task)
@@ -370,16 +374,17 @@ void timer_task::fire(percpu_timer_task& task)
 
 bool timer_task::is_pending()
 {
-    WITH_LOCK(_mutex) {
+    assert(_mutex.owned());
+    // WITH_LOCK(_mutex) {
         return _active_task != nullptr;
-    }
+    // }
 }
 
 serial_timer_task::serial_timer_task(mutex& lock, callback_t&& callback)
     : _active(false)
     , _n_scheduled(0)
     , _lock(lock)
-    , _task(std::bind(std::move(callback), std::ref(*this)))
+    , _task(std::bind(std::move(callback), std::ref(*this)), lock)
 {
 }
 
