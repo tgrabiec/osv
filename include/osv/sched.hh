@@ -1073,10 +1073,12 @@ extern std::vector<cpu*> cpus;
 inline void migrate_disable()
 {
     thread::current()->_migration_lock_counter++;
+    barrier();
 }
 
 inline void migrate_enable()
 {
+    barrier();
     thread::current()->_migration_lock_counter--;
 }
 
