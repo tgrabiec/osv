@@ -32,6 +32,7 @@
 #include <osv/prio.hh>
 #include <stdlib.h>
 #include <osv/shrinker.h>
+#include <osv/migration-lock.hh>
 #include "java/jvm_balloon.hh"
 
 TRACEPOINT(trace_memory_malloc, "buf=%p, len=%d", void *, size_t);
@@ -213,26 +214,25 @@ static inline void untracked_free_page(void *v);
 
 void pool::add_page()
 {
-    // FIXME: this function allocated a page and set it up but on rare cases
-    // we may add this page to the free list of a different cpu, due to the
-    // enablment of preemption
-    void* page = untracked_alloc_page();
-    WITH_LOCK(preempt_lock) {
-        page_header* header = new (page) page_header;
-        header->cpu_id = mempool_cpuid();
-        header->owner = this;
-        header->nalloc = 0;
-        header->local_free = nullptr;
-        for (auto p = page + page_size - _size; p >= header + 1; p -= _size) {
-            auto obj = static_cast<free_object*>(p);
-            obj->next = header->local_free;
-            header->local_free = obj;
-        }
-        _free->push_back(*header);
-        if (_free->empty()) {
-            /* encountered when starting to enable TLS for AArch64 in mixed
-               LE / IE tls models */
-            abort();
+    WITH_LOCK(migration_lock) {
+        void* page = untracked_alloc_page();
+        WITH_LOCK(preempt_lock) {
+            page_header* header = new (page) page_header;
+            header->cpu_id = mempool_cpuid();
+            header->owner = this;
+            header->nalloc = 0;
+            header->local_free = nullptr;
+            for (auto p = page + page_size - _size; p >= header + 1; p -= _size) {
+                auto obj = static_cast<free_object*>(p);
+                obj->next = header->local_free;
+                header->local_free = obj;
+            }
+            _free->push_back(*header);
+            if (_free->empty()) {
+                /* encountered when starting to enable TLS for AArch64 in mixed
+                   LE / IE tls models */
+                abort();
+            }
         }
     }
 }
