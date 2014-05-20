@@ -111,10 +111,8 @@ static unsigned mempool_cpuid() {
 typedef lockfree::queue_mpsc<pool::free_object> free_objects_type;
 free_objects_type ***pcpu_free_list;
 
-static void free_from_other_cpus()
+static void drain_free_queue_locked()
 {
-    SCOPE_LOCK(preempt_lock);
-
     unsigned cpu_id = mempool_cpuid();
 
     // drain the ring, free all objects
@@ -122,10 +120,26 @@ static void free_from_other_cpus()
         auto queue = pcpu_free_list[cpu_id][i];
         pool::free_object *obj;
         while ((obj = queue->pop())) {
-            memory::pool::from_object(obj)->free(obj);
+            DROP_LOCK(preempt_lock) {
+                memory::pool::from_object(obj)->free(obj);
+            }
         }
     }
 }
+
+static void drain_free_queue()
+{
+    WITH_LOCK(preempt_lock) {
+        drain_free_queue_locked();
+    }
+}
+
+static void free_worker_fn()
+{
+    drain_free_queue();
+}
+
+PCPU_WORKERITEM(free_worker, free_worker_fn);
 
 // Memory allocation strategy
 //
@@ -176,7 +190,9 @@ void* pool::alloc()
 {
     void * ret = nullptr;
     WITH_LOCK(preempt_lock) {
-        memory::free_from_other_cpus();
+        if (_free->empty()) {
+            memory::drain_free_queue_locked();
+        }
 
         // We enable preemption because add_page() may take a Mutex.
         // this loop ensures we have at least one free page that we can
@@ -273,10 +289,12 @@ void pool::free_different_cpu(free_object* obj, unsigned obj_cpu)
 {
     trace_pool_free_different_cpu(this, obj, obj_cpu);
 
+    assert(!sched::preemptable());
+
     auto ring = memory::pcpu_free_list[obj_cpu][mempool_cpuid()];
     ring->push(obj);
+    // memory::free_worker.signal(sched::cpus[obj_cpu]);
 }
-
 
 void pool::free(void* object)
 {
