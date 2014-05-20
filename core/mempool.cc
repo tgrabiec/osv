@@ -30,6 +30,7 @@
 #include <osv/prio.hh>
 #include <stdlib.h>
 #include <osv/shrinker.h>
+#include <osv/migration-lock.hh>
 #include "java/jvm_balloon.hh"
 
 TRACEPOINT(trace_memory_malloc, "buf=%p, len=%d, align=%d", void *, size_t,
@@ -239,9 +240,8 @@ static inline void untracked_free_page(void *v);
 
 void pool::add_page()
 {
-    // FIXME: this function allocated a page and set it up but on rare cases
-    // we may add this page to the free list of a different cpu, due to the
-    // enablment of preemption
+    SCOPE_LOCK(migration_lock);
+
     void* page = untracked_alloc_page();
     WITH_LOCK(preempt_lock) {
         page_header* header = new (page) page_header;
