@@ -9,7 +9,7 @@
 #define INCLUDED_LOCKFREE_QUEUE_MPSC
 // A lock-free multiple-producer single-consumer queue implementation.
 //
-// Multiple-Consumer means that many push()s may be in progress concurrently.
+// Multiple-Producer means that many push()s may be in progress concurrently.
 // Single-Consumer means we assume that only a single pop() attempt may be in
 // progress - potentially concurrently with push()s.
 //
