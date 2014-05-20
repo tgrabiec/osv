@@ -16,7 +16,6 @@
 #include <string.h>
 #include <osv/waitqueue.hh>
 #include <lockfree/queue-mpsc.hh>
-#include <osv/migration-lock.hh>
 #include "libc/libc.hh"
 #include <osv/align.hh>
 #include <osv/debug.hh>
