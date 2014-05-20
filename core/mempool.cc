@@ -14,6 +14,9 @@
 #include <thread>
 #include <boost/utility.hpp>
 #include <string.h>
+#include <osv/waitqueue.hh>
+#include <lockfree/queue-mpsc.hh>
+#include <osv/migration-lock.hh>
 #include "libc/libc.hh"
 #include <osv/align.hh>
 #include <osv/debug.hh>
@@ -104,57 +107,25 @@ static unsigned mempool_cpuid() {
 // 2nd index -> local cpu
 //
 
-const unsigned free_objects_ring_size = 256;
-typedef ring_spsc<void*, free_objects_ring_size> free_objects_type;
+
+typedef lockfree::queue_mpsc<pool::free_object> free_objects_type;
 free_objects_type ***pcpu_free_list;
 
-struct freelist_full_sync_object {
-    mutex _mtx;
-    condvar _cond;
-    void * _free_obj;
-};
-
-//
-// we use a pcpu sync object to synchronize between the freeing thread and the
-// worker item in the edge case of when the above ring is full.
-//
-// the sync object array performs as a secondary queue with the length of 1
-// item (_free_obj), and freeing threads will wait until it was handled by
-// the worker item. Their first priority is still to push the object to the
-// ring, only if they fail, a single thread may get a hold of,
-// _mtx and set _free_obj, all other threads will wait for the worker to drain
-// the its ring and this secondary 1-item queue.
-//
-freelist_full_sync_object freelist_full_sync[sched::max_cpus];
-
-static void free_worker_fn()
+static void free_from_other_cpus()
 {
+    SCOPE_LOCK(preempt_lock);
+
     unsigned cpu_id = mempool_cpuid();
 
     // drain the ring, free all objects
-    for (unsigned i=0; i < sched::cpus.size(); i++) {
-        void* obj = nullptr;
-        while (pcpu_free_list[cpu_id][i]->pop(obj)) {
+    for (unsigned i = 0; i < sched::cpus.size(); i++) {
+        auto queue = pcpu_free_list[cpu_id][i];
+        pool::free_object *obj;
+        while ((obj = queue->pop())) {
             memory::pool::from_object(obj)->free(obj);
         }
     }
-
-    // handle secondary 1-item queue.
-    // if we have any waiters, wake them up
-    auto& sync = freelist_full_sync[cpu_id];
-    void* free_obj = nullptr;
-    WITH_LOCK(sync._mtx) {
-        free_obj = sync._free_obj;
-        sync._free_obj = nullptr;
-    }
-
-    if (free_obj) {
-        sync._cond.wake_all();
-        memory::pool::from_object(free_obj)->free(free_obj);
-    }
 }
-
-PCPU_WORKERITEM(free_worker, free_worker_fn);
 
 // Memory allocation strategy
 //
@@ -205,6 +176,7 @@ void* pool::alloc()
 {
     void * ret = nullptr;
     WITH_LOCK(preempt_lock) {
+        memory::free_from_other_cpus();
 
         // We enable preemption because add_page() may take a Mutex.
         // this loop ensures we have at least one free page that we can
@@ -300,39 +272,10 @@ void pool::free_same_cpu(free_object* obj, unsigned cpu_id)
 
 void pool::free_different_cpu(free_object* obj, unsigned obj_cpu)
 {
-    void* object = static_cast<void*>(obj);
-    trace_pool_free_different_cpu(this, object, obj_cpu);
-    free_objects_type *ring;
+    trace_pool_free_different_cpu(this, obj, obj_cpu);
 
-    ring = memory::pcpu_free_list[obj_cpu][mempool_cpuid()];
-    if (!ring->push(object)) {
-        DROP_LOCK(preempt_lock) {
-            // The ring is full, take a mutex and use the sync object, hand
-            // the object to the secondary 1-item queue
-            auto& sync = freelist_full_sync[obj_cpu];
-            WITH_LOCK(sync._mtx) {
-                sync._cond.wait_until(sync._mtx, [&] {
-                    return (sync._free_obj == nullptr);
-                });
-
-                WITH_LOCK(preempt_lock) {
-                    ring = memory::pcpu_free_list[obj_cpu][mempool_cpuid()];
-                    if (!ring->push(object)) {
-                        // If the ring is full, use the secondary queue.
-                        // sync._free_obj is guaranteed null as we're
-                        // the only thread which broke out of the cond.wait
-                        // loop under the mutex
-                        sync._free_obj = object;
-                    }
-
-                    // Wake the worker item in case at least half of the queue is full
-                    if (ring->size() > free_objects_ring_size/2) {
-                        memory::free_worker.signal(sched::cpus[obj_cpu]);
-                    }
-                }
-            }
-        }
-    }
+    auto ring = memory::pcpu_free_list[obj_cpu][mempool_cpuid()];
+    ring->push(obj);
 }
 
 

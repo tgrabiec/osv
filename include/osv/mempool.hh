@@ -49,9 +49,9 @@ public:
     void free(void* object);
     unsigned get_size();
     static pool* from_object(void* object);
+    struct free_object;
 private:
     struct page_header;
-    struct free_object;
 private:
     bool have_full_pages();
     void add_page();
