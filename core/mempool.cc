@@ -307,16 +307,17 @@ void pool::free(void* object)
 {
     trace_pool_free(this, object);
 
-    WITH_LOCK(preempt_lock) {
-
+    WITH_LOCK(migration_lock) {
         free_object* obj = static_cast<free_object*>(object);
         page_header* header = to_header(obj);
         unsigned obj_cpu = header->cpu_id;
         unsigned cur_cpu = mempool_cpuid();
 
         if (obj_cpu == cur_cpu) {
-            // free from the same CPU this object has been allocated on.
-            free_same_cpu(obj, obj_cpu);
+            WITH_LOCK(preempt_lock) {
+                // free from the same CPU this object has been allocated on.
+                free_same_cpu(obj, obj_cpu);
+            }
         } else {
             // free from a different CPU. we try to hand the buffer
             // to the proper worker item that is pinned to the CPU that this buffer
