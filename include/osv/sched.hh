@@ -483,6 +483,7 @@ private:
     friend void acquire(dummy_lock&) {}
     friend void release(dummy_lock&) {}
     friend void start_early_threads();
+    friend void* get_current_tls_base();
     void* do_remote_thread_local_var(void* var);
     thread_handle handle();
 public:
@@ -560,7 +561,6 @@ private:
     };
     std::unique_ptr<detached_state> _detached_state;
     attr _attr;
-    int _migration_lock_counter;
     arch_thread _arch;
     unsigned int _id;
     std::atomic<bool> _interrupted;
@@ -787,6 +787,7 @@ inline void release(mutex_t* mtx)
 }
 
 extern unsigned __thread preempt_counter;
+extern unsigned __thread migration_counter;
 extern bool __thread need_reschedule;
 
 #ifdef __OSV_CORE__
@@ -1119,14 +1120,14 @@ extern std::vector<cpu*> cpus;
 
 inline void migrate_disable()
 {
-    thread::current()->_migration_lock_counter++;
+    migration_counter++;
     std::atomic_signal_fence(std::memory_order_seq_cst);
 }
 
 inline void migrate_enable()
 {
     std::atomic_signal_fence(std::memory_order_release);
-    thread::current()->_migration_lock_counter--;
+    migration_counter--;
 }
 
 

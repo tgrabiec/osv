@@ -50,6 +50,8 @@ using namespace osv::clock::literals;
 
 void cancel_this_thread_alarm();
 
+extern char tcb0[];
+
 namespace sched {
 
 TRACEPOINT(trace_sched_switch, "to %p vold=%g vnew=%g", thread*, float, float);
@@ -71,6 +73,7 @@ thread __thread * s_current;
 cpu __thread * current_cpu;
 
 unsigned __thread preempt_counter = 1;
+unsigned __thread migration_counter = 0;
 bool __thread need_reschedule = false;
 
 elf::tls_data tls;
@@ -444,7 +447,7 @@ void cpu::load_balance()
         }
         WITH_LOCK(irq_lock) {
             auto i = std::find_if(runqueue.rbegin(), runqueue.rend(),
-                    [](thread& t) { return t._migration_lock_counter == 0; });
+                    [](thread& t) { return t.remote_thread_local_var(migration_counter) == 0; });
             if (i == runqueue.rend()) {
                 continue;
             }
@@ -607,9 +610,19 @@ thread *thread::find_by_id(unsigned int id)
     return (*th).second;
 }
 
+void* get_current_tls_base()
+{
+    auto this_thread = thread::current();
+    if (!this_thread) {
+        return tcb0;
+    } else {
+        return this_thread->_tcb->tls_base;
+    }
+}
+
 void* thread::do_remote_thread_local_var(void* var)
 {
-    auto tls_cur = static_cast<char*>(current()->_tcb->tls_base);
+    auto tls_cur = static_cast<char*>(get_current_tls_base());
     auto tls_this = static_cast<char*>(this->_tcb->tls_base);
     auto offset = static_cast<char*>(var) - tls_cur;
     return tls_this + offset;
@@ -620,7 +633,6 @@ thread::thread(std::function<void ()> func, attr attr, bool main)
     , _runtime(thread::priority_default)
     , _detached_state(new detached_state(this))
     , _attr(attr)
-    , _migration_lock_counter(0)
     , _id(0)
     , _cleanup([this] { delete this; })
     , _joiner(nullptr)
@@ -662,7 +674,7 @@ thread::thread(std::function<void ()> func, attr attr, bool main)
     }
 
     if (_attr._pinned_cpu) {
-        ++_migration_lock_counter;
+        remote_thread_local_var(migration_counter)++;
     }
 
     if (main) {
