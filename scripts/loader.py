@@ -1252,7 +1252,7 @@ class osv_runqueue(gdb.Command):
         gdb.Command.__init__(self, 'osv runqueue',
                              gdb.COMMAND_USER, gdb.COMPLETE_NONE)
     def invoke(self, arg, from_tty):
-        ncpus = gdb.parse_and_eval('sched::cpus._M_impl._M_finish - sched::cpus._M_impl._M_start');
+        ncpus = gdb.parse_and_eval('sched::cpus._M_impl._M_finish - sched::cpus._M_impl._M_start')
         for cpu in range(ncpus) :
             gdb.write("CPU %d:\n" % cpu)
             for thread in runqueue(cpu):
@@ -1266,6 +1266,31 @@ class osv_info_virtio(gdb.Command):
             if derived_from(driver.dereference().dynamic_type, virtio_driver_type):
                 show_virtio_driver(driver)
 
+class osv_percpu(gdb.Command):
+    '''osv percpu prints the value of a PERCPU(type, var) for all CPUs
+    typical example is:
+    osv percpu memory::percpu_page_buffer # print the percpu_page_buffer on all cpus
+    osv percpu memory::percpu_page_buffer nr # print size of buffer on each cpu
+    osv percpu memory::percpu_page_buffer free 2 # print second argument in buffer'''
+    def __init__(self):
+        gdb.Command.__init__(self, 'osv percpu', gdb.COMMAND_USER, gdb.COMPLETE_COMMAND, True)
+    def invoke(self, args, from_tty):
+        args = args.split()
+        ncpus = int(gdb.parse_and_eval('sched::cpus._M_impl._M_finish - sched::cpus._M_impl._M_start'))
+        cpus = gdb.lookup_global_symbol('sched::cpus').value()
+        percpu = gdb.parse_and_eval(args[0])['_var']
+        percpu_addr = percpu.address
+        for cpu in range(ncpus):
+            gdb.write("CPU %d:\n" % cpu)
+            base = cpus['_M_impl']['_M_start'][cpu]['percpu_base']
+            addr = base+to_int(percpu_addr)
+            addr = addr.cast(percpu_addr.type)
+            target = addr.dereference()
+            for field in args[1:]:
+                if field.isdigit():
+                    field = int(field)
+                target = target[field]
+            gdb.write(str(target) + "\n")
 
 osv()
 osv_heap()
@@ -1292,5 +1317,6 @@ osv_leak_off()
 osv_pagetable()
 osv_pagetable_walk()
 osv_runqueue()
+osv_percpu()
 
 setup_libstdcxx()
