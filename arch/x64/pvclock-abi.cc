@@ -9,6 +9,11 @@
 #include <osv/pvclock-abi.hh>
 #include "processor.hh"
 #include <osv/barrier.hh>
+#include <osv/irqlock.hh>
+#include <osv/mutex.h>
+#include <osv/debug.hh>
+#include <osv/percpu.hh>
+#include <assert.h>
 
 namespace pvclock {
 
@@ -26,19 +31,28 @@ u64 wall_clock_boot(pvclock_wall_clock *_wall)
     return w;
 }
 
+static PERCPU(u64, last_time);
+static PERCPU(u64, last_tsc);
+
 u64 system_time(pvclock_vcpu_time_info *sys)
 {
     u32 v1, v2;
     u64 time;
+    irq_save_lock_type irqlock;
+    SCOPE_LOCK(irqlock);
     do {
         v1 = sys->version;
         barrier();
         processor::lfence();
-        time = sys->system_time +
-               processor_to_nano(sys, processor::rdtsc() - sys->tsc_timestamp);
+        u64 tsc = processor::rdtsc();
+        assert(tsc >= *last_tsc);
+        *last_tsc = tsc;
+        time = sys->system_time + processor_to_nano(sys, tsc - sys->tsc_timestamp);
         barrier();
         v2 = sys->version;
     } while ((v1 & 1) || v1 != v2);
+    assert(time >= *last_time);
+    *last_time = time;
     return time;
 }
 };
