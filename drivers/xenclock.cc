@@ -26,9 +26,13 @@ protected:
     virtual u64 wall_clock_boot();
     virtual u64 system_time();
     virtual u64 processor_to_nano(u64 ticks) override __attribute__((no_instrument_function));
+    virtual void init_on_cpu();
 private:
     pvclock_wall_clock* _wall;
+    static percpu<pvclock::percpu_pvclock*> _sys;
 };
+
+PERCPU(pvclock::percpu_pvclock*, xenclock::_sys);
 
 xenclock::xenclock()
 {
@@ -40,22 +44,30 @@ u64 xenclock::wall_clock_boot()
     return pvclock::wall_clock_boot(_wall);
 }
 
+void xenclock::init_on_cpu()
+{
+    auto cpu = sched::cpu::current()->id;
+    *_sys = new pvclock::percpu_pvclock(&xen::xen_shared_info.vcpu_info[cpu].time);
+}
+
 u64 xenclock::system_time()
 {
     WITH_LOCK(migration_lock) {
-        auto cpu = sched::cpu::current();
-        auto cpu_id = cpu ? cpu->id : 0;
-        auto sys = &xen::xen_shared_info.vcpu_info[cpu_id].time;
-        return pvclock::system_time(sys);
+        if (is_initialized()) {
+            return (*_sys)->time();
+        } else {
+            auto cpu = sched::cpu::current();
+            auto cpu_id = cpu ? cpu->id : 0;
+            auto sys = &xen::xen_shared_info.vcpu_info[cpu_id].time;
+            return pvclock::system_time(sys);
+        }
     }
 }
 
 u64 xenclock::processor_to_nano(u64 ticks)
 {
     WITH_LOCK(migration_lock) {
-        auto cpu = sched::cpu::current()->id;
-        auto sys = &xen::xen_shared_info.vcpu_info[cpu].time;
-        return pvclock::processor_to_nano(sys, ticks);
+        return (*_sys)->processor_to_nano(ticks);
     }
 }
 

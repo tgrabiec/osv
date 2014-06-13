@@ -32,27 +32,80 @@ u64 wall_clock_boot(pvclock_wall_clock *_wall)
 }
 
 static PERCPU(u64, last_time);
-static PERCPU(u64, last_tsc);
 
-u64 system_time(pvclock_vcpu_time_info *sys)
+inline u64 processor_to_nano2(pvclock_transformation_params& params, u64 time)
+{
+    if (params.tsc_shift >= 0) {
+        time <<= params.tsc_shift;
+    } else {
+        time >>= -params.tsc_shift;
+    }
+    asm("mul %1; shrd $32, %%rdx, %0"
+            : "+a"(time)
+            : "rm"(u64(params.tsc_to_system_mul))
+            : "rdx");
+    return time;
+}
+
+static inline
+u64 transform(pvclock_transformation_params& params, u64 tsc)
+{
+    return params.system_time + processor_to_nano2(params, tsc - params.tsc_timestamp);
+}
+
+template<typename Func, typename Result = u64>
+static inline
+Result read_atomic(pvclock_vcpu_time_info* info, Func func)
 {
     u32 v1, v2;
-    u64 time;
+    Result result;
+    do {
+        v1 = info->version;
+        barrier();
+        result = func(info);
+        barrier();
+        v2 = info->version;
+    } while ((v1 & 1) || v1 != v2);
+    return result;
+}
+
+u64 percpu_pvclock::time()
+{
     irq_save_lock_type irqlock;
     SCOPE_LOCK(irqlock);
-    do {
-        v1 = sys->version;
-        barrier();
+
+    auto time = read_atomic(_vcpu_info, [this] (pvclock_vcpu_time_info* info) -> u64 {
         processor::lfence();
         u64 tsc = processor::rdtsc();
-        assert(tsc >= *last_tsc);
-        *last_tsc = tsc;
-        time = sys->system_time + processor_to_nano(sys, tsc - sys->tsc_timestamp);
-        barrier();
-        v2 = sys->version;
-    } while ((v1 & 1) || v1 != v2);
+        u64 time = transform(info->params, tsc);
+
+        if (info->version != _version) {
+            if (_version > 0) {
+                _time_offset = transform(_params, tsc) + _time_offset - time;
+            }
+            _version = info->version;
+            _params = info->params;
+        }
+
+        return time + _time_offset;
+    });
+
     assert(time >= *last_time);
     *last_time = time;
     return time;
 }
+
+u64 system_time(pvclock_vcpu_time_info* sys)
+{
+    return read_atomic(sys, [] (pvclock_vcpu_time_info* info) -> u64 {
+        processor::lfence();
+        return transform(info->params, processor::rdtsc());
+    });
+}
+
+u64 percpu_pvclock::processor_to_nano(u64 time)
+{
+    return processor_to_nano2(_vcpu_info->params, time);
+}
+
 };

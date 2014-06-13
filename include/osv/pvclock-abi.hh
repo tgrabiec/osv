@@ -15,33 +15,40 @@ struct pvclock_wall_clock {
         u32   nsec;
 } __attribute__((__packed__));
 
+struct pvclock_transformation_params {
+        u64   tsc_timestamp;
+        u64   system_time;
+        u32   tsc_to_system_mul;
+        s8    tsc_shift;
+} __attribute__((__packed__));
+
 struct pvclock_vcpu_time_info {
          u32   version;
          u32   pad0;
-         u64   tsc_timestamp;
-         u64   system_time;
-         u32   tsc_to_system_mul;
-         s8    tsc_shift;
+         pvclock_transformation_params params;
          u8    flags;
          u8    pad[2];
-         u64   last;
 } __attribute__((__packed__)); /* 32 bytes */
 
 namespace pvclock {
 
-inline u64 processor_to_nano(pvclock_vcpu_time_info *sys, u64 time)
-{
-    if (sys->tsc_shift >= 0) {
-        time <<= sys->tsc_shift;
-    } else {
-        time >>= -sys->tsc_shift;
+class percpu_pvclock {
+private:
+    u32 _version;
+    u64 _time_offset;
+    pvclock_transformation_params _params;
+    pvclock_vcpu_time_info* _vcpu_info;
+public:
+    percpu_pvclock(pvclock_vcpu_time_info* vcpu_info)
+        : _version(0)
+        , _time_offset(0)
+        , _vcpu_info(vcpu_info)
+    {
     }
-    asm("mul %1; shrd $32, %%rdx, %0"
-            : "+a"(time)
-            : "rm"(u64(sys->tsc_to_system_mul))
-            : "rdx");
-    return time;
-}
+
+    u64 time();
+    u64 processor_to_nano(u64 time);
+};
 
 u64 wall_clock_boot(pvclock_wall_clock *_wall);
 u64 system_time(pvclock_vcpu_time_info *sys);

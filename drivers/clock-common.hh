@@ -29,6 +29,8 @@ protected:
     virtual u64 wall_clock_boot() = 0;
     virtual u64 system_time() = 0;
     virtual void init_on_cpu() {};
+
+    inline bool is_initialized() { return _smp_init.load(std::memory_order_acquire); };
 };
 
 #endif

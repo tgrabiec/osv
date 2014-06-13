@@ -33,7 +33,7 @@ s64 pv_based_clock::time()
     // This happens due to problems in init order dependencies (the clock
     // depends on the scheduler, for percpu initialization, and vice-versa,
     // for idle thread initialization).
-    if (_smp_init.load(std::memory_order_acquire)) {
+    if (is_initialized()) {
         r += system_time();
     }
     return r;
@@ -41,7 +41,7 @@ s64 pv_based_clock::time()
 
 s64 pv_based_clock::uptime()
 {
-    if (_smp_init.load(std::memory_order_acquire)) {
+    if (is_initialized()) {
         return system_time() - _boot_systemtime;
     } else {
         return 0;
@@ -52,7 +52,7 @@ s64 pv_based_clock::boot_time()
 {
     // The following is time()-uptime():
     auto r = wall_clock_boot();
-    if (_smp_init.load(std::memory_order_acquire)) {
+    if (is_initialized()) {
         r += _boot_systemtime;
     }
     return r;

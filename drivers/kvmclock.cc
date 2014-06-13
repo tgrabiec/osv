@@ -31,11 +31,11 @@ protected:
 private:
     static bool _new_kvmclock_msrs;
     pvclock_wall_clock* _wall;
-    static percpu<pvclock_vcpu_time_info> _sys;
+    static percpu<pvclock::percpu_pvclock*> _sys;
 };
 
 bool kvmclock::_new_kvmclock_msrs = true;
-PERCPU(pvclock_vcpu_time_info, kvmclock::_sys);
+PERCPU(pvclock::percpu_pvclock*, kvmclock::_sys);
 
 kvmclock::kvmclock()
 {
@@ -50,8 +50,9 @@ void kvmclock::init_on_cpu()
 {
     auto system_time_msr = (_new_kvmclock_msrs) ?
                            msr::KVM_SYSTEM_TIME_NEW : msr::KVM_SYSTEM_TIME;
-    memset(&*_sys, 0, sizeof(*_sys));
-    processor::wrmsr(system_time_msr, mmu::virt_to_phys(&*_sys) | 1);
+    auto pv_info = new pvclock_vcpu_time_info();
+    processor::wrmsr(system_time_msr, mmu::virt_to_phys(pv_info) | 1);
+    *_sys = new pvclock::percpu_pvclock(pv_info);
 }
 
 bool kvmclock::probe()
@@ -74,14 +75,13 @@ u64 kvmclock::wall_clock_boot()
 u64 kvmclock::system_time()
 {
     WITH_LOCK(migration_lock) {
-        auto sys = &*_sys;  // avoid recalculating address each access
-        return pvclock::system_time(sys);
+        return (*_sys)->time(); // avoid recalculating address each access
     }
 }
 
 u64 kvmclock::processor_to_nano(u64 ticks)
 {
-    return pvclock::processor_to_nano(&*_sys, ticks);
+    return (*_sys)->processor_to_nano(ticks);
 }
 
 static __attribute__((constructor(init_prio::clock))) void setup_kvmclock()
