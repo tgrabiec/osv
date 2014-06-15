@@ -28,6 +28,7 @@ struct pvclock_vcpu_time_info {
          pvclock_transformation_params params;
          u8    flags;
          u8    pad[2];
+         u64   last;
 } __attribute__((__packed__)); /* 32 bytes */
 
 namespace pvclock {

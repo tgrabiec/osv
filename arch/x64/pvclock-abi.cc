@@ -90,8 +90,8 @@ u64 percpu_pvclock::time()
         return time + _time_offset;
     });
 
-    assert(time >= *last_time);
-    *last_time = time;
+    assert(time >= _vcpu_info->last);
+    _vcpu_info->last = time;
     return time;
 }
 
