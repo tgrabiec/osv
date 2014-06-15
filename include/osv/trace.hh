@@ -356,7 +356,7 @@ public:
         tr->cpu = -1;
         auto buffer = tr->buffer;
         if (tr->thread) {
-            tr->time = clock::get()->time();
+            // tr->time = clock::get()->time();
             tr->cpu = tr->thread->tcpu()->id;
         }
         tr->backtrace = false;

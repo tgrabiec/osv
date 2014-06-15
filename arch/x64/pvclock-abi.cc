@@ -13,6 +13,7 @@
 #include <osv/mutex.h>
 #include <osv/debug.hh>
 #include <osv/percpu.hh>
+#include <osv/trace.hh>
 #include <assert.h>
 
 namespace pvclock {
@@ -69,6 +70,8 @@ Result read_atomic(pvclock_vcpu_time_info* info, Func func)
     return result;
 }
 
+TRACEPOINT(trace_kvmclock_system_time, "v1=%d v2=%d tsc=%lu time=%lu mul=%d shift=%d fl=%d off=%ld", u32, u32, u64, u64, u32, int, int, u64);
+
 u64 percpu_pvclock::time()
 {
     irq_save_lock_type irqlock;
@@ -83,6 +86,11 @@ u64 percpu_pvclock::time()
             if (_version > 0) {
                 _time_offset = transform(_params, tsc) + _time_offset - time;
             }
+
+            trace_kvmclock_system_time(_version, info->version,
+                info->params.tsc_timestamp, info->params.system_time,
+                 info->params.tsc_to_system_mul, info->params.tsc_shift, info->flags, _time_offset);
+
             _version = info->version;
             _params = info->params;
         }
