@@ -70,33 +70,51 @@ Result read_atomic(pvclock_vcpu_time_info* info, Func func)
     return result;
 }
 
-TRACEPOINT(trace_kvmclock_system_time, "v1=%d v2=%d tsc=%lu time=%lu mul=%d shift=%d fl=%d off=%ld", u32, u32, u64, u64, u32, int, int, u64);
+TRACEPOINT(trace_kvmclock_system_time, "now=%lu v1=%d v2=%d tsc=%lu time=%lu mul=%d shift=%d fl=%d off=%ld", u64, u32, u32, u64, u64, u32, int, int, s64);
 
 u64 percpu_pvclock::time()
 {
     irq_save_lock_type irqlock;
     SCOPE_LOCK(irqlock);
 
-    auto time = read_atomic(_vcpu_info, [this] (pvclock_vcpu_time_info* info) -> u64 {
+    u32 v1, v2;
+    u64 time, tsc;
+
+    do {
+        v1 = _vcpu_info->version;
+        barrier();
+
         processor::lfence();
-        u64 tsc = processor::rdtsc();
-        u64 time = transform(info->params, tsc);
+        tsc = processor::rdtsc();
+        time = transform(_vcpu_info->params, tsc);
 
-        if (info->version != _version) {
-            if (_version > 0) {
-                _time_offset = transform(_params, tsc) + _time_offset - time;
-            }
+        // if (v1 != _version) {
+        //     if (_version > 0) {
+        //         _time_offset = transform(_params, tsc) + _time_offset - time;
+        //     }
 
-            trace_kvmclock_system_time(_version, info->version,
-                info->params.tsc_timestamp, info->params.system_time,
-                 info->params.tsc_to_system_mul, info->params.tsc_shift, info->flags, _time_offset);
+        //     assert(abs((s64)_time_offset) < 10000);
 
-            _version = info->version;
-            _params = info->params;
-        }
+        //     _params = _vcpu_info->params;
+        // }
 
-        return time + _time_offset;
-    });
+        _params = _vcpu_info->params;
+
+        time += _time_offset;
+
+        barrier();
+        v2 = _vcpu_info->version;
+    } while ((v1 & 1) || v1 != v2);
+
+    if (_version != v1) {
+        trace_kvmclock_system_time(tsc, _version, v1,
+                _params.tsc_timestamp, _params.system_time,
+                 _params.tsc_to_system_mul, _params.tsc_shift, _vcpu_info->flags, (s64) _time_offset);
+    }
+
+    _version = v1;
+
+    assert(abs((s64)_time_offset) < 10000);
 
     assert(time >= _vcpu_info->last);
     _vcpu_info->last = time;
