@@ -993,6 +993,7 @@ timer_list::callback_dispatch::callback_dispatch()
 
 void timer_list::fired()
 {
+    assert(!arch::irq_enabled());
     auto now = osv::clock::uptime::now();
     _last = osv::clock::uptime::time_point::max();
     _list.expire(now);
