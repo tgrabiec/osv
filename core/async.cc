@@ -266,27 +266,25 @@ timer_task::timer_task(callback_t&& callback, mutex& lock)
 
 timer_task::~timer_task() {
     assert(_mutex.owned());
-    // WITH_LOCK(_mutex) {
-        trace_async_timer_task_destroy(this);
+    trace_async_timer_task_destroy(this);
 
-        assert(!_terminating);
-        _terminating = true;
-        _active_task = nullptr;
+    assert(!_terminating);
+    _terminating = true;
+    _active_task = nullptr;
 
-        _registrations.remove_and_dispose_if(
-            [] (const percpu_timer_task& task) {
-                auto old = percpu_timer_task::state::ACTIVE;
-                return ((percpu_timer_task&) task)._state.compare_exchange_strong(old,
-                    percpu_timer_task::state::RELEASED, std::memory_order_relaxed);
-            },
-            [] (percpu_timer_task* task) {
-                task->_worker.free(*task);
-            });
+    _registrations.remove_and_dispose_if(
+        [] (const percpu_timer_task& task) {
+            auto old = percpu_timer_task::state::ACTIVE;
+            return ((percpu_timer_task&) task)._state.compare_exchange_strong(old,
+                percpu_timer_task::state::RELEASED, std::memory_order_relaxed);
+        },
+        [] (percpu_timer_task* task) {
+            task->_worker.free(*task);
+        });
 
-        while (!_registrations.empty()) {
-            _registrations_drained.wait(_mutex);
-        }
-    // }
+    while (!_registrations.empty()) {
+        _registrations_drained.wait(_mutex);
+    }
 }
 
 bool timer_task::reschedule(clock::duration delay)
@@ -297,28 +295,26 @@ bool timer_task::reschedule(clock::duration delay)
 bool timer_task::reschedule(clock::time_point time_point)
 {
     assert(_mutex.owned());
-    // WITH_LOCK(_mutex) {
-        assert(!_terminating);
+    assert(!_terminating);
 
-        bool was_pending = cancel();
+    bool was_pending = cancel();
 
-        WITH_LOCK(migration_lock) {
-            auto& _worker = get_worker();
+    WITH_LOCK(migration_lock) {
+        auto& _worker = get_worker();
 
-            trace_async_timer_task_reschedule(this, &_worker, time_point.time_since_epoch().count());
+        trace_async_timer_task_reschedule(this, &_worker, time_point.time_since_epoch().count());
 
-            auto& task = _worker.borrow_task();
-            task.fire_at = time_point;
-            task.master = this;
-            task._state.store(percpu_timer_task::state::ACTIVE, std::memory_order_relaxed);
+        auto& task = _worker.borrow_task();
+        task.fire_at = time_point;
+        task.master = this;
+        task._state.store(percpu_timer_task::state::ACTIVE, std::memory_order_relaxed);
 
-            _active_task = &task;
-            _registrations.push_front(task);
-            _worker.insert(task);
-        }
+        _active_task = &task;
+        _registrations.push_front(task);
+        _worker.insert(task);
+    }
 
-        return was_pending;
-    // }
+    return was_pending;
 }
 
 void timer_task::free_registration(percpu_timer_task& task)
@@ -334,24 +330,22 @@ void timer_task::free_registration(percpu_timer_task& task)
 bool timer_task::cancel()
 {
     assert(_mutex.owned());
-    // WITH_LOCK(_mutex) {
-        trace_async_timer_task_cancel(this, _active_task);
-        assert(!_terminating);
+    trace_async_timer_task_cancel(this, _active_task);
+    assert(!_terminating);
 
-        if (_active_task == nullptr) {
-            return false;
-        }
+    if (_active_task == nullptr) {
+        return false;
+    }
 
-        auto old = percpu_timer_task::state::ACTIVE;
-        if (_active_task->_state.compare_exchange_strong(old,
-            percpu_timer_task::state::RELEASED, std::memory_order_relaxed))
-        {
-            free_registration(*_active_task);
-        }
+    auto old = percpu_timer_task::state::ACTIVE;
+    if (_active_task->_state.compare_exchange_strong(old,
+        percpu_timer_task::state::RELEASED, std::memory_order_relaxed))
+    {
+        free_registration(*_active_task);
+    }
 
-        _active_task = nullptr;
-        return true;
-    // }
+    _active_task = nullptr;
+    return true;
 }
 
 void timer_task::fire(percpu_timer_task& task)
@@ -375,9 +369,7 @@ void timer_task::fire(percpu_timer_task& task)
 bool timer_task::is_pending()
 {
     assert(_mutex.owned());
-    // WITH_LOCK(_mutex) {
-        return _active_task != nullptr;
-    // }
+    return _active_task != nullptr;
 }
 
 serial_timer_task::serial_timer_task(mutex& lock, callback_t&& callback)

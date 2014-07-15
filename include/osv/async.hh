@@ -98,7 +98,7 @@ class timer_task {
 public:
     timer_task(callback_t&& callback, mutex& lock);
     timer_task(const timer_task&) = delete;
-    ~timer_task();
+    virtual ~timer_task();
 
     /**
      * Schedules the callback to run after given time_point has passed.

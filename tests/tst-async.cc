@@ -13,9 +13,18 @@
 #include <osv/preempt-lock.hh>
 #include <boost/test/unit_test.hpp>
 #include <future>
-/*
+
 using namespace osv::clock::literals;
 using namespace async;
+
+class timer_task_with_mutex : public timer_task {
+private:
+    mutex m;
+public:
+    timer_task_with_mutex(callback_t&& callback)
+        : timer_task(std::move(callback), m)
+    {}
+};
 
 template<typename T, typename Duration>
 static void assert_resolves(std::promise<T>& promise, Duration duration)
@@ -44,7 +53,7 @@ BOOST_AUTO_TEST_CASE(test_async_task_fires)
 {
     std::promise<bool> done;
 
-    timer_task task([&] {
+    timer_task_with_mutex task([&] {
         done.set_value(true);
     });
 
@@ -56,7 +65,7 @@ BOOST_AUTO_TEST_CASE(test_async_task_can_be_cancelled)
 {
     std::promise<bool> done;
 
-    timer_task task([&] {
+    timer_task_with_mutex task([&] {
         done.set_value(true);
     });
 
@@ -70,7 +79,7 @@ BOOST_AUTO_TEST_CASE(test_async_task_can_be_reprogrammed_while_armed)
 {
     std::promise<bool> done;
 
-    timer_task task([&] {
+    timer_task_with_mutex task([&] {
         done.set_value(true);
     });
 
@@ -84,7 +93,7 @@ BOOST_AUTO_TEST_CASE(test_async_task_can_be_reprogrammed_after_cancelled)
 {
     std::promise<bool> done;
 
-    timer_task task([&] {
+    timer_task_with_mutex task([&] {
         done.set_value(true);
     });
 
@@ -99,7 +108,7 @@ BOOST_AUTO_TEST_CASE(test_desctructor_does_not_block_when_called_after_task_is_d
 {
     std::promise<bool> done;
 
-    timer_task task([&] {
+    timer_task_with_mutex task([&] {
         done.set_value(true);
     });
 
@@ -113,7 +122,7 @@ BOOST_AUTO_TEST_CASE(test_destructor_waits_for_callback_to_finish)
     std::promise<bool> proceed;
 
     {
-        timer_task task([&] {
+        timer_task_with_mutex task([&] {
             proceed.set_value(true);
 
             // if destructor didn't wait for us then counter would be still 0 when
@@ -138,7 +147,7 @@ BOOST_AUTO_TEST_CASE(test_async_task_can_be_reprogrammed_after_done)
     std::promise<bool> proceed2;
 
     {
-        timer_task task([&] {
+        timer_task_with_mutex task([&] {
             if (counter++ == 0) {
                 proceed1.set_value(true);
             } else {
@@ -162,9 +171,9 @@ BOOST_AUTO_TEST_CASE(test_async_task_can_be_reprogrammed_from_the_callback)
     std::atomic<int> counter {0};
     std::promise<bool> done;
 
-    timer_task* task;
+    timer_task_with_mutex* task;
 
-    task = new timer_task([&] {
+    task = new timer_task_with_mutex([&] {
         if (counter++ == 0) {
             task->reschedule(1_ms);
         } else {
@@ -185,9 +194,9 @@ BOOST_AUTO_TEST_CASE(test_destructor_waits_for_callbacks_which_have_rescheduled_
     std::atomic<int> counter {0};
     std::promise<bool> checkpoint;
 
-    timer_task* task;
+    timer_task_with_mutex* task;
 
-    task = new timer_task([&] {
+    task = new timer_task_with_mutex([&] {
         if (counter++ == 0) {
             task->reschedule(10_s); // should never fire
             checkpoint.set_value(true);
@@ -210,10 +219,10 @@ BOOST_AUTO_TEST_CASE(test_a_task_which_is_set_far_in_future_does_not_block_new_t
 {
     std::promise<bool> done;
 
-    timer_task far_task([&] {});
+    timer_task_with_mutex far_task([&] {});
     far_task.reschedule(5_s);
 
-    timer_task task([&] {
+    timer_task_with_mutex task([&] {
         done.set_value(true);
     });
     task.reschedule(1_ms);
@@ -227,14 +236,14 @@ BOOST_AUTO_TEST_CASE(test_task_which_is_scheduled_second_but_with_sooner_expirat
     std::vector<int> values;
     std::promise<bool> done;
 
-    timer_task task_1([&] {
+    timer_task_with_mutex task_1([&] {
         WITH_LOCK(lock) {
             values.push_back(1);
         }
         done.set_value(true);
     });
 
-    timer_task task_2([&] {
+    timer_task_with_mutex task_2([&] {
         WITH_LOCK(lock) {
             values.push_back(2);
         }
@@ -257,10 +266,10 @@ BOOST_AUTO_TEST_CASE(test_timers_with_same_expiration_time_fire_separately)
     std::promise<bool> done;
     std::atomic<int> counter {0};
     const int n_tasks = 10;
-    timer_task* tasks[n_tasks];
+    timer_task_with_mutex* tasks[n_tasks];
 
     for (auto& task_ptr : tasks) {
-        task_ptr = new timer_task([&] {
+        task_ptr = new timer_task_with_mutex([&] {
             if (++counter == n_tasks) {
                 done.set_value(true);
             }
@@ -282,7 +291,7 @@ BOOST_AUTO_TEST_CASE(test_timers_with_same_expiration_time_fire_separately)
 
 BOOST_AUTO_TEST_CASE(test_is_pending)
 {
-    timer_task task([&] {});
+    timer_task_with_mutex task([&] {});
     task.reschedule(1_s);
 
     BOOST_REQUIRE(task.is_pending());
@@ -406,4 +415,3 @@ BOOST_AUTO_TEST_CASE(test_serial_timer__callback_fires_if_not_cancelled)
 
     BOOST_REQUIRE(counter == 1);
 }
-*/
