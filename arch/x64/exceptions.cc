@@ -18,6 +18,7 @@
 #include <osv/prio.hh>
 #include <osv/rcu.hh>
 #include <osv/mutex.h>
+#include <osv/intr_random.hh>
 
 #include "fault-fixup.hh"
 
@@ -215,6 +216,7 @@ void interrupt(exception_frame* frame)
     // remember it in a global here.  This works because our interrupts
     // don't nest.
     current_interrupt_frame = frame;
+    harvest_intr_randomness(frame);
     unsigned vector = frame->error_code;
     idt.invoke_interrupt(vector);
     // must call scheduler after EOI, or it may switch contexts and miss the EOI
