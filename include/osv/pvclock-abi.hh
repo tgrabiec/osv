@@ -56,6 +56,7 @@ public:
 private:
     u8 _valid_flags;
     std::atomic<u64> _last;
+    std::atomic<u64> _last_tsc;
 };
 
 #endif
