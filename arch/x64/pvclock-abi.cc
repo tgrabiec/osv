@@ -9,6 +9,9 @@
 #include <osv/pvclock-abi.hh>
 #include "processor.hh"
 #include <osv/barrier.hh>
+#include <osv/irqlock.hh>
+#include <osv/mutex.h>
+#include <assert.h>
 
 u64 pvclock::wall_clock_boot(pvclock_wall_clock *_wall)
 {
@@ -33,8 +36,21 @@ u64 pvclock::system_time(pvclock_vcpu_time_info *sys)
         v1 = sys->version;
         barrier();
         processor::lfence();
+
+        u64 tsc;
+        irq_save_lock_type irq_lock;
+        WITH_LOCK(irq_lock) {
+            auto last_tsc = _last_tsc.load(std::memory_order_acquire);
+            do {
+                barrier();
+                processor::lfence();
+                tsc = processor::rdtsc();
+                assert(tsc >= last_tsc);
+            } while (!_last_tsc.compare_exchange_weak(last_tsc, tsc, std::memory_order_relaxed));
+        }
+
         time = sys->system_time +
-               processor_to_nano(sys, processor::rdtsc() - sys->tsc_timestamp);
+               processor_to_nano(sys, tsc - sys->tsc_timestamp);
         flags = sys->flags;
         barrier();
         v2 = sys->version;
