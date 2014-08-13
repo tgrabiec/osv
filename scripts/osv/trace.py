@@ -403,6 +403,10 @@ class Thread(object):
     def __str__(self):
         return "%s (0x%x)" % (self.name, self.ptr)
 
+    @property
+    def id(self):
+        return self.ptr
+
 def read(buffer_view):
     unpacker = SlidingUnpacker(buffer_view)
     version, = unpacker.unpack('i')
