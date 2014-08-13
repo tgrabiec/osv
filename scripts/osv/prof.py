@@ -23,12 +23,13 @@ class ProfNode(tree.TreeNode):
         }
 
 class ProfSample:
-    def __init__(self, timestamp, cpu, thread, backtrace, resident_time=None):
+    def __init__(self, timestamp, cpu, thread, backtrace, resident_time=None, attrs=None):
         self.cpu = cpu
         self.thread = thread
         self.backtrace = backtrace
         self.timestamp = timestamp
         self.resident_time = resident_time or 0
+        self.attrs = attrs or {}
 
     @property
     def time_range(self):
@@ -39,7 +40,7 @@ class ProfSample:
         if not intersection:
             return None
         return ProfSample(intersection.begin, self.cpu, self.thread, self.backtrace,
-            resident_time=intersection.end - intersection.begin)
+            resident_time=intersection.end - intersection.begin, attrs=self.attrs)
 
 time_units = [
     (1e9 * 3600, "h"),
@@ -236,17 +237,56 @@ class timed_trace_producer(object):
         for timed in self.finish():
             yield timed
 
+def get_timed_traces_correlated(traces, time_range=None):
+    vma = None
+    producer = timed_trace_producer()
+
+    thread_ctx = {}
+
+    for t in traces:
+        if time_range and not t.time in time_range:
+            continue
+
+        ctx = thread_ctx.get(t.thread.id)
+        if not ctx:
+            ctx = {
+                'in_fault': False,
+                'samples': []
+            }
+            thread_ctx[t.thread.id] = ctx
+
+        if t.name == "mmu_vm_fault":
+            ctx['in_fault'] = True
+        elif t.name == "mmu_vm_fault_ret":
+            ctx['in_fault'] = False
+        elif t.name == "mmu_vma_fault":
+            if ctx['in_fault']:
+                for s in ctx['samples']:
+                    s.vma = t.data[0]
+                    yield s
+            ctx['samples'] = []
+        else:
+            timed = producer(t)
+            if timed:
+                ctx['samples'].append(timed)
+
 def get_timed_traces(traces, time_range=None):
     producer = timed_trace_producer()
     for timed in producer.get_all(traces):
         if not time_range or timed.time_range.intersection(time_range):
             yield timed
 
-def get_duration_profile(traces, filter=None):
-    for timed in get_timed_traces(traces):
+def get_duration_profile_from_timed(timed_traces, filter=None):
+    for timed in timed_traces:
         t = timed.trace
         if (not filter or filter(t)) and t.backtrace:
-            yield ProfSample(t.time, t.cpu, t.thread, t.backtrace, resident_time=timed.duration)
+            p = ProfSample(t.time, t.cpu, t.thread, t.backtrace, resident_time=timed.duration, attrs={
+                'vma': getattr(timed, 'vma', None)
+                })
+            yield p
+
+def get_duration_profile(traces, filter=None):
+    return get_duration_profile_from_timed(get_timed_traces(traces))
 
 def collapse_similar(node):
     while node.has_only_one_child():
@@ -291,6 +331,15 @@ class GroupByCpu:
 
     def format(self, group):
         return 'CPU 0x%02x' % group
+
+class GroupByVma:
+    def get_group(self, sample):
+        return sample.attrs.get('vma', None)
+
+    def format(self, group):
+        if not group:
+            return 'None'
+        return '0x%x' % group
 
 def default_printer(args):
     sys.stdout.write(args)

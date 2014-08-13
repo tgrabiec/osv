@@ -149,6 +149,7 @@ def add_time_slicing_options(parser):
 groupers = {
     'thread': prof.GroupByThread,
     'cpu': prof.GroupByCpu,
+    'vma': prof.GroupByVma,
     'none': lambda: None,
 }
 
@@ -285,6 +286,14 @@ def prof_wait(args):
 def prof_lock(args):
     def get_profile(traces):
         return prof.get_duration_profile(traces, sample_name_is("mutex_lock_wait"))
+    show_profile(args, get_profile)
+
+def prof_fault_cont(args):
+    time_range = get_time_range(args)
+
+    def get_profile(traces):
+        return prof.get_duration_profile_from_timed(
+            prof.get_timed_traces_correlated(traces, time_range=time_range))
     show_profile(args, get_profile)
 
 def needs_dpkt():
@@ -595,6 +604,12 @@ if __name__ == "__main__":
     add_trace_source_options(cmd_prof_lock)
     add_profile_options(cmd_prof_lock)
     cmd_prof_lock.set_defaults(func=prof_lock, paginate=True)
+
+    cmd_prof_fault_cont = subparsers.add_parser("prof-fault-contention")
+    add_symbol_resolution_options(cmd_prof_fault_cont)
+    add_trace_source_options(cmd_prof_fault_cont)
+    add_profile_options(cmd_prof_fault_cont)
+    cmd_prof_fault_cont.set_defaults(func=prof_fault_cont, paginate=True)
 
     cmd_prof_hit = subparsers.add_parser("prof", help="show trace hit profile", description="""
         Prints profile showing number of times given tracepoint was reached.
