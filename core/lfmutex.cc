@@ -17,6 +17,7 @@ TRACEPOINT(trace_mutex_lock_wait, "%p", mutex *);
 TRACEPOINT(trace_mutex_lock_wake, "%p", mutex *);
 TRACEPOINT(trace_mutex_try_lock, "%p, success=%d", mutex *, bool);
 TRACEPOINT(trace_mutex_unlock, "%p", mutex *);
+TRACEPOINT(trace_mutex_unlock_wake, "%p, t=%p", mutex *, const sched::thread*);
 TRACEPOINT(trace_mutex_send_lock, "%p, wr=%p", mutex *, wait_record *);
 TRACEPOINT(trace_mutex_receive_lock, "%p", mutex *);
 
@@ -243,7 +244,9 @@ void mutex::unlock()
     while(true) {
         wait_record *other = waitqueue.pop();
         if (other) {
-            assert(other->thread() != sched::thread::current()); // this thread isn't waiting, we know that :(
+            auto t = other->thread();
+            assert(t != sched::thread::current()); // this thread isn't waiting, we know that :(
+            trace_mutex_unlock_wake(this, t);
             other->wake();
             return;
         }
