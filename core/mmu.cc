@@ -1299,8 +1299,11 @@ bool vma::map_dirty()
     return _map_dirty;
 }
 
+TRACEPOINT(trace_mmu_vma_fault, "vma=%p, addr=%p, error_code=%x", void*, uintptr_t, unsigned int);
+
 void vma::fault(uintptr_t addr, exception_frame *ef)
 {
+    trace_mmu_vma_fault(this, addr, ef->get_error());
     auto hp_start = align_up(_range.start(), huge_page_size);
     auto hp_end = align_down(_range.end(), huge_page_size);
     size_t size;
@@ -1427,6 +1430,7 @@ error jvm_balloon_vma::sync(uintptr_t start, uintptr_t end)
 
 void jvm_balloon_vma::fault(uintptr_t fault_addr, exception_frame *ef)
 {
+    trace_mmu_vma_fault(this, fault_addr, ef->get_error());
     if (jvm_balloon_fault(_balloon, ef, this)) {
         return;
     }
@@ -1559,6 +1563,7 @@ file_vma::file_vma(addr_range range, unsigned perm, unsigned flags, fileref file
 
 void file_vma::fault(uintptr_t addr, exception_frame *ef)
 {
+    trace_mmu_vma_fault(this, addr, ef->get_error());
     auto hp_start = align_up(_range.start(), huge_page_size);
     auto hp_end = align_down(_range.end(), huge_page_size);
     auto fsize = ::size(_file);
