@@ -35,6 +35,28 @@ static void increment_thread(int id, T *m, long len, volatile long *shared)
     }
 }
 
+// increment_thread loops() non-atomically incrementing a shared value.
+// If N threads like this run concurrently, at the end the sum will
+// not end up N*len.
+// NOTE: If the threads run separately, they will not interfere with
+// each other, so make sure the test is long enough that the first
+// thread doesn't finish before the second starts!
+template <typename T>
+static void increment_thread_recursive(int id, T *m, long len, volatile long *shared)
+{
+    for(int i=0; i<len; i++){
+        m->lock();
+        int val = *shared;
+        m->lock();
+        *shared = val+1;
+        m->unlock();
+        m->unlock();
+        if((i%100000)==0){
+            std::cerr << char('A'+id);
+        }
+    }
+}
+
 // loop_thread is like increment_thread, just doesn't touch the shared
 // variable. It can be useful for bechmarking rwlock_read_lock.
 template <typename T>
@@ -212,6 +234,12 @@ int main(int argc, char **argv)
     printf("\n==== BENCHMARK 2 ====\nContended tests using increment_thread:\n");
     auto lff = increment_thread<mutex>;
     int n = 1000000;
+    test<mutex>(2, n, true, lff);
+    test<mutex>((int)sched::cpus.size(), n, true, lff);
+    test<mutex>(20, n, false, lff);
+
+    printf("\n==== BENCHMARK 3 ====\nContended tests using increment_thread_recursive:\n");
+    lff = increment_thread_recursive<mutex>;
     test<mutex>(2, n, true, lff);
     test<mutex>((int)sched::cpus.size(), n, true, lff);
     test<mutex>(20, n, false, lff);
