@@ -114,9 +114,9 @@ int vfs_file::stat(struct stat *st)
 	struct vnode *vp = fp->f_dentry->d_vnode;
 	int error;
 
-	vn_lock(vp);
+	// vn_lock(vp);
 	error = vn_stat(vp, st);
-	vn_unlock(vp);
+	// vn_unlock(vp);
 
 	return error;
 }
@@ -171,9 +171,9 @@ int vfs_file::get_arcbuf(void* key, off_t offset)
     data.uio_resid = mmu::page_size;
     data.uio_rw = UIO_READ;
 
-    vn_lock(vp);
+    // vn_lock(vp);
     assert(VOP_CACHE(vp, this, &data) == 0);
-    vn_unlock(vp);
+    // vn_unlock(vp);
 
     return (data.uio_resid != 0) ? -1 : 0;
 }
