@@ -262,7 +262,7 @@ def get_timed_traces_correlated(traces, time_range=None):
         elif t.name == "mmu_vma_fault":
             if ctx['in_fault']:
                 for s in ctx['samples']:
-                    s.vma = t.data[0]
+                    s.vma = (t.data[0], t.data[3])
                     yield s
             ctx['samples'] = []
         else:
@@ -339,7 +339,7 @@ class GroupByVma:
     def format(self, group):
         if not group:
             return 'None'
-        return '0x%x' % group
+        return '0x%x %s' % group
 
 def default_printer(args):
     sys.stdout.write(args)
