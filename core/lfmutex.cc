@@ -26,11 +26,6 @@ void mutex::lock()
 
     sched::thread *current = sched::thread::current();
 
-    if (current && owner.load(std::memory_order_relaxed) == current) {
-        ++depth;
-        return;
-    }
-
     if (count.fetch_add(1, std::memory_order_acquire) == 0) {
         // Uncontended case (no other thread is holding the lock, and no
         // concurrent lock() attempts). We got the lock.
