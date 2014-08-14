@@ -1198,6 +1198,8 @@ static void vm_sigbus(uintptr_t addr, exception_frame* ef)
     osv::handle_mmap_fault(addr, SIGBUS, ef);
 }
 
+volatile bool _locked = true;
+
 void vm_fault(uintptr_t addr, exception_frame* ef)
 {
     trace_mmu_vm_fault(addr, ef->get_error());
@@ -1207,7 +1209,17 @@ void vm_fault(uintptr_t addr, exception_frame* ef)
         return;
     }
     addr = align_down(addr, mmu::page_size);
-    WITH_LOCK(vma_list_mutex) {
+    if (_locked) {
+        WITH_LOCK(vma_list_mutex) {
+            auto vma = vma_list.find(addr_range(addr, addr+1), vma::addr_compare());
+            if (vma == vma_list.end() || access_fault(*vma, ef->get_error())) {
+                vm_sigsegv(addr, ef);
+                trace_mmu_vm_fault_sigsegv(addr, ef->get_error(), "slow");
+                return;
+            }
+            vma->fault(addr, ef);
+        }
+    } else {
         auto vma = vma_list.find(addr_range(addr, addr+1), vma::addr_compare());
         if (vma == vma_list.end() || access_fault(*vma, ef->get_error())) {
             vm_sigsegv(addr, ef);
