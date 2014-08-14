@@ -529,10 +529,10 @@ class osv_mmap(gdb.Command):
                 file_vma = vma.cast(gdb.lookup_type('mmu::file_vma').pointer())
                 file_ptr = file_vma['_file']['px'].cast(gdb.lookup_type('file').pointer())
                 dentry_ptr = file_ptr['f_dentry']['px'].cast(gdb.lookup_type('dentry').pointer())
-                print('0x%016x 0x%016x %s flags=%s perm=%s offset=0x%08x path=%s'
-                        % (start, end, size, flags, perm, file_vma['_offset'], dentry_ptr['d_path'].string()))
+                print('0x%x: 0x%016x 0x%016x %s flags=%s perm=%s offset=0x%08x path=%s'
+                        % (ulong(vma), start, end, size, flags, perm, file_vma['_offset'], dentry_ptr['d_path'].string()))
             else:
-                print('0x%016x 0x%016x %s flags=%s perm=%s' % (start, end, size, flags, perm))
+                print('0x%x: 0x%016x 0x%016x %s flags=%s perm=%s' % (ulong(vma), start, end, size, flags, perm))
 
 class osv_vma_find(gdb.Command):
     def __init__(self):
