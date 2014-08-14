@@ -290,8 +290,8 @@ static bool operator==(const cached_page_arc::arc_map::value_type& l, const cach
     return l.second == r;
 }
 
-constexpr unsigned lru_max_length = 100;
-constexpr unsigned lru_free_count = 20;
+constexpr unsigned lru_max_length = 100000;
+constexpr unsigned lru_free_count = 200;
 
 std::unordered_multimap<arc_buf_t*, cached_page_arc*> cached_page_arc::arc_cache_map;
 static std::unordered_map<hashkey, cached_page_arc*> read_cache;
