@@ -154,36 +154,51 @@ def build(args):
         print("No such image configuration: " + args.image_config + ". Assuming list of modules.")
         run_list = []
         disabled_modules = set()
-        for module in args.image_config.split(","):
+        selected_modules = args.image_config.split(",")
+        for module in selected_modules:
             if module[0] == '-':
                 disabled_modules.add(module[1:])
         module_names = []
         config = resolve.read_config()
         if add_default and "default" in config:
             module_names +=  config["default"]
-        module_names += args.image_config.split(",")
+        module_names += selected_modules
         for missing in list(disabled_modules - set(module_names)):
             raise Exception("Attempt to disable module %s but not enabled" % missing)
         module_names = [i for i in module_names if not i in disabled_modules]
+
         for module in module_names:
             if module[0] == '-':
                 continue
             a = module.split(".", 1)
             name = a[0]
-            variant = a[1] if (len(a) > 1) else "default"
-            mod = api.require(name)
-            if hasattr(mod, variant):
-                run_list.append(getattr(mod, variant))
-            elif variant != "default" and variant != "none":
-                raise Exception("Attribute %s not set in module %s" % (variant, name))
+            variant = a[1] if (len(a) > 1) else '*'
+            mod = api.require_running(name, variant)
 
     modules = resolve.get_required_modules()
+    modules_to_run = resolve.get_modules_to_run()
 
     print("Modules:")
     if not modules:
         print("  None")
     for module in modules:
-        print("  " + module.name)
+        prefix = "  " + module.name
+        if module in modules_to_run:
+            print(prefix + "." + modules_to_run[module])
+        else:
+            print(prefix)
+
+    for module, run_config in modules_to_run.iteritems():
+        if run_config == 'none':
+            continue
+        if run_config == '*':
+            attr_name = 'default'
+        else:
+            attr_name = run_config
+        if hasattr(module, attr_name):
+            run_list.append(getattr(module, attr_name))
+        elif run_config != '*':
+            raise Exception("Attribute %s not set in module %s" % (attr_name, module.name))
 
     make_modules(modules, args)
 
