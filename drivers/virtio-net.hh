@@ -330,6 +330,7 @@ private:
                 _xmitter.poll_until([] { return false; }, _xmit_it);
             }, sched::thread::attr().name("virtio-tx-worker"))
         {
+             worker.set_priority(0.1);
             //
             // Kick at least every full ring of packets (see _kick_thresh
             // above).

@@ -419,6 +419,8 @@ void net::receiver()
     u64 rx_drops = 0, rx_packets = 0, csum_ok = 0;
     u64 csum_err = 0, rx_bytes = 0;
 
+    sched::thread::current()->set_priority(0.1);
+
     while (1) {
 
         // Wait for rx queue (used elements)
