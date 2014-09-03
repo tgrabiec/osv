@@ -56,7 +56,8 @@ static bool is_jvm_option(const char *arg) {
            starts_with(arg, "-D") ||
            starts_with(arg, "-X") ||
            starts_with(arg, "-javaagent") ||
-           starts_with(arg, "-agentlib");
+           starts_with(arg, "-agentlib") ||
+           starts_with(arg, "-agentpath");
 }
 
 static void mark_heap_option(char **arg, int index, int &has_xms, int &has_xmx)
