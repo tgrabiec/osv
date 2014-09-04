@@ -11,6 +11,7 @@
 #include <osv/prex.h>
 #include <osv/sched.hh>
 #include <osv/mmu.hh>
+#include <osv/app.hh>
 
 #include <functional>
 #include <memory>
@@ -263,6 +264,16 @@ procfs_readdir(vnode *vp, file *fp, dirent *dir)
     return 0;
 }
 
+static std::string procfs_cmdline()
+{
+    auto app = osv::application::get_current();
+    if (app) {
+        return app->get_cmdline();
+    } else {
+        return "";
+    }
+}
+
 static std::string procfs_stats()
 {
     int pid = 0, ppid = 0, pgrp = 0, session = 0, tty = 0, tpgid = -1,
@@ -357,6 +368,7 @@ procfs_mount(mount* mp, const char *dev, int flags, const void* data)
     auto self = make_shared<proc_dir_node>(inode_count++);
     self->add("maps", inode_count++, mmu::procfs_maps);
     self->add("stat", inode_count++, procfs_stats);
+    self->add("cmdline", inode_count++, procfs_cmdline);
 
     auto* root = new proc_dir_node(vp->v_ino);
     root->add("self", self);

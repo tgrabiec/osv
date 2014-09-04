@@ -167,6 +167,10 @@ void application::run_main(std::string path, int argc, char** argv)
     char *contig_argv[argc + 1];
 
     for (int i = 0; i < argc; ++i) {
+        if (i) {
+            _cmdline += " ";
+        }
+        _cmdline += argv[i];
         size_t asize = strlen(argv[i]);
         memcpy(ab, argv[i], asize);
         ab[asize] = '\0';
@@ -248,6 +252,11 @@ int application::get_return_code()
 std::string application::get_command()
 {
     return _command;
+}
+
+std::string application::get_cmdline()
+{
+    return _cmdline;
 }
 
 namespace this_application {
