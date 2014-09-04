@@ -111,6 +111,12 @@ public:
      */
     std::string get_command();
 
+    /**
+     * Returns the invoked program executable of this application together
+     * with arguments.
+     */
+    std::string get_cmdline();
+
 private:
     void start();
     void main();
@@ -123,6 +129,7 @@ private:
     pthread_t _thread;
     std::vector<std::string> _args;
     std::string _command;
+    std::string _cmdline;
     int _return_code;
     bool _termination_requested;
     mutex _termination_mutex;
