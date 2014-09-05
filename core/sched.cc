@@ -821,6 +821,12 @@ thread::~thread()
     rcu_dispose(_detached_state.release());
 }
 
+static sched::cpu* next_cpu()
+{
+    static std::atomic<int> index { 0 };
+    return sched::cpus[index++ % sched::cpus.size()];
+}
+
 void thread::start()
 {
     assert(_detached_state->st == status::unstarted);
@@ -830,7 +836,7 @@ void thread::start()
         return;
     }
 
-    _detached_state->_cpu = _attr._pinned_cpu ? _attr._pinned_cpu : current()->tcpu();
+    _detached_state->_cpu = _attr._pinned_cpu ? _attr._pinned_cpu : next_cpu();
     remote_thread_local_var(percpu_base) = _detached_state->_cpu->percpu_base;
     remote_thread_local_var(current_cpu) = _detached_state->_cpu;
     _detached_state->st.store(status::waiting);
