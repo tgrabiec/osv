@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 2.8.4)
+project(osv)
+
+include_directories(include)
+
+add_definitions(-std=gnu++11)
+add_definitions(-D_KERNEL)
+
+AUX_SOURCE_DIRECTORY(core SOURCE_FILES)
+AUX_SOURCE_DIRECTORY(arch/x64 SOURCE_FILES)
+AUX_SOURCE_DIRECTORY(drivers SOURCE_FILES)
+AUX_SOURCE_DIRECTORY(fs SOURCE_FILES)
+AUX_SOURCE_DIRECTORY(fs/procfs SOURCE_FILES)
+AUX_SOURCE_DIRECTORY(fs/devfs SOURCE_FILES)
+AUX_SOURCE_DIRECTORY(fs/vfs SOURCE_FILES)
+AUX_SOURCE_DIRECTORY(fs/ramfs SOURCE_FILES)
+
+add_executable(osv ${SOURCE_FILES})
