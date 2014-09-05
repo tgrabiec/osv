@@ -288,6 +288,9 @@ def prof_lock(args):
 def prof_idle(args):
     show_profile(args, prof.get_idle_profile)
 
+def prof_idle_wake(args):
+    show_profile(args, prof.get_idle_wake_profile)
+
 def needs_dpkt():
     global dpkt
     try:
@@ -716,6 +719,12 @@ if __name__ == "__main__":
     add_trace_source_options(cmd_prof_idle)
     add_profile_options(cmd_prof_idle)
     cmd_prof_idle.set_defaults(func=prof_idle, paginate=True)
+
+    cmd_prof_idle_wake = subparsers.add_parser("prof-idle-wake")
+    add_symbol_resolution_options(cmd_prof_idle_wake)
+    add_trace_source_options(cmd_prof_idle_wake)
+    add_profile_options(cmd_prof_idle_wake)
+    cmd_prof_idle_wake.set_defaults(func=prof_idle_wake, paginate=True)
 
     cmd_prof_hit = subparsers.add_parser("prof", help="show trace hit profile", description="""
         Prints profile showing number of times given tracepoint was reached.

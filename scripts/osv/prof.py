@@ -300,6 +300,38 @@ def get_idle_profile(traces):
         for s in trim_samples(cpu, t.time):
             yield s
 
+def get_idle_wake_profile(traces):
+    producer = timed_trace_producer()
+
+    class CpuState:
+        def __init__(self):
+            self.idle = None
+            self.woken = False
+            self.waits = {}
+
+    cpus = defaultdict(CpuState)
+
+    for t in traces:
+        cpu = cpus[t.cpu]
+
+        if t.name == 'sched_idle':
+            cpu.woken = None
+            cpu.idle = t
+        elif t.name == 'sched_idle_ret':
+            cpu.woken = cpu.idle
+            cpu.idle = None
+        elif t.name == 'sched_wait':
+            cpu.waits[t.thread.ptr] = t
+        elif t.name == 'sched_wait_ret':
+            old = cpu.waits.pop(t.thread.ptr, None)
+            if old:
+                if cpu.woken:
+                    idle_start_sample = cpu.woken
+                    yield ProfSample(idle_start_sample.time, t.cpu, t.thread, old.backtrace,
+                        resident_time=t.time - idle_start_sample.time)
+
+            cpu.woken = None
+
 def collapse_similar(node):
     while node.has_only_one_child():
         child = next(node.children)
