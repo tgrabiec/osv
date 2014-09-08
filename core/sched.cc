@@ -469,6 +469,28 @@ unsigned cpu::load()
     return runqueue.size();
 }
 
+static cpu* get_least_loaded_cpu()
+{
+    auto min_cpu = *min_element(cpus.begin(), cpus.end(),
+            [](cpu *c1, cpu *c2) {
+                return c1->load() < c2->load();
+            });
+
+    auto min_load = min_cpu->load();
+
+    std::vector<cpu*> min_cpus;
+
+    min_cpus.push_back(min_cpu);
+
+    for (auto&& cpu : cpus) {
+        if (cpu != min_cpu && cpu->load() == min_load) {
+            min_cpus.push_back(cpu);
+        }
+    }
+
+    return min_cpus[std::rand() % min_cpus.size()];
+}
+
 void cpu::load_balance()
 {
     notifier::fire();
@@ -479,8 +501,7 @@ void cpu::load_balance()
         if (runqueue.empty()) {
             continue;
         }
-        auto min = *std::min_element(cpus.begin(), cpus.end(),
-                [](cpu* c1, cpu* c2) { return c1->load() < c2->load(); });
+        auto min = get_least_loaded_cpu();
         if (min == this) {
             continue;
         }
