@@ -302,7 +302,7 @@ private:
     /* Single Rx queue object */
     struct rxq {
         rxq(vring* vq, std::function<void ()> poll_func)
-            : vqueue(vq), poll_task(poll_func, sched::thread::attr().
+            : vqueue(vq), poll_task(poll_func, sched::thread::attr().pin(sched::cpus[sched::cpus.size() - 1]).
                                     name("virtio-net-rx")) {};
         vring* vqueue;
         sched::thread  poll_task;
@@ -328,7 +328,7 @@ private:
             worker([this] {
                 // TODO: implement a proper StopPred when we fix a SP code
                 _xmitter.poll_until([] { return false; }, _xmit_it);
-            }, sched::thread::attr().name("virtio-tx-worker"))
+            }, sched::thread::attr().pin(sched::cpus[sched::cpus.size() - 2]).name("virtio-tx-worker"))
         {
              worker.set_priority(0.1);
             //

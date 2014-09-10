@@ -475,9 +475,15 @@ unsigned cpu::load()
     return runqueue.size();
 }
 
+static const int n_reserved_cpus = 2;
+
 static cpu* get_least_loaded_cpu()
 {
-    auto min_cpu = *min_element(cpus.begin(), cpus.end(),
+    if (cpus.size() <= n_reserved_cpus) {
+        return cpus[0];
+    }
+    auto last_cpu = cpus[cpus.size() - n_reserved_cpus];
+    auto min_cpu = *min_element(cpus.begin(), cpus.begin() + (cpus.size() - n_reserved_cpus),
             [](cpu *c1, cpu *c2) {
                 return c1->load() < c2->load();
             });
@@ -489,7 +495,7 @@ static cpu* get_least_loaded_cpu()
     min_cpus.push_back(min_cpu);
 
     for (auto&& cpu : cpus) {
-        if (cpu != min_cpu && cpu->load() == min_load) {
+        if (cpu != min_cpu && cpu->id < last_cpu->id && cpu->load() == min_load) {
             min_cpus.push_back(cpu);
         }
     }
