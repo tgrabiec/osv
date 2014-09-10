@@ -475,6 +475,14 @@ unsigned cpu::load()
     return runqueue.size();
 }
 
+static std::atomic<size_t> n_reserved_cpus = { 0 };
+
+cpu* reserve_cpu()
+{
+    ++n_reserved_cpus;
+    return sched::cpus[std::max((ssize_t)0, (ssize_t)sched::cpus.size() - (ssize_t)n_reserved_cpus)];
+}
+
 void cpu::load_balance()
 {
     notifier::fire();
@@ -485,7 +493,10 @@ void cpu::load_balance()
         if (runqueue.empty()) {
             continue;
         }
-        auto min = *std::min_element(cpus.begin(), cpus.end(),
+        if (cpus.size() <= n_reserved_cpus) {
+            continue;
+        }
+        auto min = *std::min_element(cpus.begin(), cpus.begin() + (cpus.size() - n_reserved_cpus),
                 [](cpu* c1, cpu* c2) { return c1->load() < c2->load(); });
         if (min == this) {
             continue;
