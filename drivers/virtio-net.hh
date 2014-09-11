@@ -327,7 +327,7 @@ private:
             worker([this] {
                 // TODO: implement a proper StopPred when we fix a SP code
                 _xmitter.poll_until([] { return false; }, _xmit_it);
-            }, sched::thread::attr().pin(sched::reserve_cpu()).name("virtio-tx-worker"))
+            }, sched::thread::attr().latency_sensitive().name("virtio-tx-worker"))
         {
              worker.set_priority(0.1);
             //

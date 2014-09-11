@@ -286,6 +286,11 @@ public:
         _renormalize_count = other._renormalize_count;
     }
 
+    void reset() {
+        _Rtt = 0;
+        _renormalize_count = -1;
+    }
+
     // When _Rtt=0, multiplicative normalization doesn't matter, so it doesn't
     // matter what we set for _renormalize_count. We can't set it properly
     // in the constructor (it doesn't run from the scheduler, or know which
@@ -321,10 +326,15 @@ public:
         stack_info _stack;
         cpu *_pinned_cpu;
         bool _detached;
+        bool _latency_sensitive {};
         std::array<char, 16> _name = {};
         attr() : _pinned_cpu(nullptr), _detached(false) { }
         attr &pin(cpu *c) {
             _pinned_cpu = c;
+            return *this;
+        }
+        attr &latency_sensitive() {
+            _latency_sensitive = true;
             return *this;
         }
         attr &stack(size_t stacksize) {

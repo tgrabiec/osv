@@ -377,7 +377,7 @@ void cpu::send_wakeup_ipi()
 {
 #ifndef AARCH64_PORT_STUB
     std::atomic_thread_fence(std::memory_order_seq_cst);
-    if (!idle_poll.load(std::memory_order_relaxed) && runqueue.empty()) {
+    if (!idle_poll.load(std::memory_order_relaxed)) {
         trace_sched_ipi(id);
         wakeup_ipi.send(this);
     }
@@ -447,7 +447,11 @@ void cpu::handle_incoming_wakeups()
                     // normalized. We may need to convert a global value to the
                     // local value when waking up after a CPU migration, or to
                     // perform renormalizations which we missed while sleeping.
-                    t._runtime.update_after_sleep();
+                    if (t._attr._latency_sensitive) {
+                        t._runtime.reset();
+                    } else {
+                        t._runtime.update_after_sleep();
+                    }
                     enqueue(t);
                     t.resume_timers();
                 }
@@ -488,7 +492,6 @@ static cpu* get_least_loaded_cpu()
     if (cpus.size() <= n_reserved_cpus) {
         return cpus[0];
     }
-    auto last_cpu = cpus[cpus.size() - n_reserved_cpus];
     auto min_cpu = *min_element(cpus.begin(), cpus.begin() + (cpus.size() - n_reserved_cpus),
             [](cpu *c1, cpu *c2) {
                 return c1->load() < c2->load();
@@ -501,7 +504,7 @@ static cpu* get_least_loaded_cpu()
     min_cpus.push_back(min_cpu);
 
     for (auto&& cpu : cpus) {
-        if (cpu != min_cpu && cpu->id < last_cpu->id && cpu->load() == min_load) {
+        if (cpu != min_cpu && cpu->id < (cpus.size() - n_reserved_cpus) && cpu->load() == min_load) {
             min_cpus.push_back(cpu);
         }
     }
