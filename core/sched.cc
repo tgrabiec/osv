@@ -475,7 +475,13 @@ unsigned cpu::load()
     return runqueue.size();
 }
 
-static const int n_reserved_cpus = 2;
+static size_t n_reserved_cpus = 0;
+
+cpu* reserve_cpu()
+{
+    ++n_reserved_cpus;
+    return sched::cpus[std::max((ssize_t)0, (ssize_t)sched::cpus.size() - (ssize_t)n_reserved_cpus)];
+}
 
 static cpu* get_least_loaded_cpu()
 {

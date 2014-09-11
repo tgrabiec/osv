@@ -1187,6 +1187,8 @@ inline void migrate_enable()
 // this function should be used sparingly, e.g., for debugging.
 void with_all_threads(std::function<void(sched::thread &)>);
 
+cpu* reserve_cpu();
+
 }
 
 #endif /* SCHED_HH_ */
