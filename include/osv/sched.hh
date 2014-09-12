@@ -740,7 +740,7 @@ struct cpu : private timer_base::client {
     void do_idle();
     void idle_poll_start();
     void idle_poll_end();
-    void send_wakeup_ipi();
+    void send_wakeup_ipi(bool b);
     void load_balance();
     unsigned load();
     void reschedule_from_interrupt();

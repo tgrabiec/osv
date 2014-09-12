@@ -373,11 +373,11 @@ void cpu::idle_poll_end()
     std::atomic_thread_fence(std::memory_order_seq_cst);
 }
 
-void cpu::send_wakeup_ipi()
+void cpu::send_wakeup_ipi(bool force)
 {
 #ifndef AARCH64_PORT_STUB
     std::atomic_thread_fence(std::memory_order_seq_cst);
-    if (!idle_poll.load(std::memory_order_relaxed)) {
+    if (force || (!idle_poll.load(std::memory_order_relaxed) && runqueue.size() == 0)) {
         trace_sched_ipi(id);
         wakeup_ipi.send(this);
     }
@@ -555,7 +555,7 @@ void cpu::load_balance()
             min->incoming_wakeups_mask.set(id);
             // FIXME: avoid if the cpu is alive and if the priority does not
             // FIXME: warrant an interruption
-            min->send_wakeup_ipi();
+            min->send_wakeup_ipi(false);
         }
     }
 }
@@ -954,7 +954,7 @@ void thread::wake_impl(detached_state* st, unsigned allowed_initial_states_mask)
             // FIXME: avoid if the cpu is alive and if the priority does not
             // FIXME: warrant an interruption
             if (tcpu != current()->tcpu()) {
-                tcpu->send_wakeup_ipi();
+                tcpu->send_wakeup_ipi(st->t->_attr._latency_sensitive);
             } else {
                 need_reschedule = true;
             }
